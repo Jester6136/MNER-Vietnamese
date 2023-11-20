@@ -10,12 +10,13 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer
 from modules.model_architecture.MAF_roberta_model import MTCCMRobertaForMMTokenClassificationCRF
-from pytorch_pretrained_bert.optimization import BertAdam,warmup_linear
-import resnet.resnet as resnet
-from resnet.resnet_utils import myResnet
+from modules.resnet import resnet as resnet
+from modules.resnet.resnet_utils import myResnet
 from modules.datasets.dataset_roberta import convert_mm_examples_to_features
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)
+                              
+from pytorch_pretrained_bert.optimization import BertAdam,warmup_linear
 CONFIG_NAME = 'bert_config.json'
 WEIGHTS_NAME = 'pytorch_model.bin'
 
