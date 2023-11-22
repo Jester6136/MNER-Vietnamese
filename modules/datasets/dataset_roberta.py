@@ -2,7 +2,8 @@ import torch
 import logging
 import os
 logger = logging.getLogger(__name__)
-
+from torchvision import transforms
+from PIL import Image
 
 class SBInputExample(object):
     """A single training/test example for simple sequence classification."""
@@ -27,7 +28,7 @@ class SBInputExample(object):
         # it is just kept in order not to modify the original code
         self.auxlabel = auxlabel
 
-class SBInputFeature(object):
+class SBInputFeatures(object):
     """A single set of features of data"""
 
     def __init__(self,input_ids,input_mask,added_input_mask,segment_ids,img_feat,label_id,auxlabel_id):

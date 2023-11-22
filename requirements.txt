@@ -1,0 +1,5 @@
+transformers
+seqeval
+boto3
+torchcrf 
+pytorch_pretrained_bert==0.4.0

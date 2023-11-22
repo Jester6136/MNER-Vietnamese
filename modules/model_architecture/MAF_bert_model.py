@@ -4,7 +4,7 @@ import copy
 from transformers.models.bert.modeling_bert import BertIntermediate,BertOutput,BertSelfOutput,BertPreTrainedModel
 from transformers import BertConfig
 from torch import nn as nn
-from TorchCRF import CRF
+from torchcrf import CRF
 
 class BertCoAttention(nn.Module):
     def __init__(self, config):
@@ -189,8 +189,7 @@ class MTCCMBertForMMTokenClassificationCRF(BertPreTrainedModel):
     def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_mean, visual_embeds_att, trans_matrix,temp=None,
                 temp_lamb=None,labels=None, auxlabels=None):
         # 获得文本表示
-        sequence_output, _ = self.bert(input_ids, token_type_ids=segment_ids, attention_mask=input_mask,
-                                       output_all_encoded_layers=False) # batch_size * seq_len * hidden_size
+        sequence_output, _ = self.bert(input_ids, token_type_ids=segment_ids, attention_mask=input_mask) # batch_size * seq_len * hidden_size
 
         sequence_output = self.dropout(sequence_output)
         sequence_output_pooler = _
