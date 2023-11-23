@@ -175,6 +175,7 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
     count = 0
 
     transform = transforms.Compose([
+            transforms.Resize([256, 256]),
             transforms.RandomCrop(crop_size),  # args.crop_size, by default it is set to be 224
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
