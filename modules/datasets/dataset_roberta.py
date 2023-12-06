@@ -131,7 +131,8 @@ class MNERProcessor(DataProcessor):
         return self._create_examples(data, imgs, auxlabels, "test")
 
     def get_labels(self):
-        return ["O",'B-GENDER', 'I-GENDER','B-TRANSPORTATION', 'I-TRANSPORTATION','B-JOB', 'I-JOB','B-SYMPTOM_AND_DISEASE', 'I-SYMPTOM_AND_DISEASE','B-NAME', 'I-NAME', 'B-ORGANIZATION', 'I-ORGANIZATION', 'B-AGE', 'I-AGE', 'B-LOCATION', 'I-LOCATION', 'B-DATE', 'I-DATE', 'B-PATIENT_ID', 'I-PATIENT_ID', "X", "<s>", "</s>"]
+        return ["O","B-DATETIME","I-DATETIME","B-DATETIME-DATE","I-DATETIME-DATE","I-EVENT-SPORT","B-EVENT-SPORT","B-QUANTITY-NUM","I-QUANTITY-NUM","B-PERSON","I-PERSON","I-IP","B-IP","B-PERSONTYPE","I-PERSONTYPE","B-EVENT-CUL","I-EVENT-CUL","B-LOCATION-GPE","I-LOCATION-GPE","B-LOCATION-STRUC","I-LOCATION-STRUC","X","<s>", "</s>"]
+        # return ["O",'B-GENDER', 'I-GENDER','B-TRANSPORTATION', 'I-TRANSPORTATION','B-JOB', 'I-JOB','B-SYMPTOM_AND_DISEASE', 'I-SYMPTOM_AND_DISEASE','B-NAME', 'I-NAME', 'B-ORGANIZATION', 'I-ORGANIZATION', 'B-AGE', 'I-AGE', 'B-LOCATION', 'I-LOCATION', 'B-DATE', 'I-DATE', 'B-PATIENT_ID', 'I-PATIENT_ID', "X", "<s>", "</s>"]
 
     def get_auxlabels(self):
         return ["O", "B", "I", "X", "<s>", "</s>"]

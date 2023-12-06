@@ -9,10 +9,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer
-from modules.model_architecture.MAF_roberta_model import MTCCMRobertaForMMTokenClassificationCRF
+from modules.model_architecture.MAF_bert_model import MTCCMBertForMMTokenClassificationCRF
 from modules.resnet import resnet as resnet
 from modules.resnet.resnet_utils import myResnet
-from modules.datasets.dataset_roberta import convert_mm_examples_to_features,MNERProcessor
+from modules.datasets.dataset import convert_mm_examples_to_features,MNERProcessor
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)                        
 from pytorch_pretrained_bert.optimization import BertAdam,warmup_linear
@@ -239,7 +239,7 @@ if args.do_train:
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
 if args.mm_model == 'MTCCMBert':
-        model = MTCCMRobertaForMMTokenClassificationCRF.from_pretrained(args.bert_model,
+        model = MTCCMBertForMMTokenClassificationCRF.from_pretrained(args.bert_model,
                                                                     cache_dir=args.cache_dir, layer_num1=args.layer_num1,
                                                                     layer_num2=args.layer_num2,
                                                                     layer_num3=args.layer_num3,
@@ -491,7 +491,7 @@ print('\n')
 
 config = BertConfig(output_config_file)
 if args.mm_model == 'MTCCMBert':
-    model = MTCCMRobertaForMMTokenClassificationCRF(config, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
+    model = MTCCMBertForMMTokenClassificationCRF(config, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
                                                     layer_num3=args.layer_num3, num_labels=num_labels)
 else:
     print('please define your MNER Model')

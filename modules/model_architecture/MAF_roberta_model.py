@@ -5,7 +5,8 @@ from transformers.models.roberta.modeling_roberta import RobertaIntermediate,Rob
 from transformers import BertConfig
 from torch import nn as nn
 from torchcrf import CRF
-
+import torch
+import math
 # ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
 
 class RobertaCoAttention(nn.Module):
@@ -191,10 +192,10 @@ class MTCCMRobertaForMMTokenClassificationCRF(RobertaPreTrainedModel):
     def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_mean, visual_embeds_att, trans_matrix,temp=None,
                 temp_lamb=None,labels=None, auxlabels=None):
         # 获得文本表示
-        sequence_output, _ = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask) # batch_size * seq_len * hidden_size
-
+        features= self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask) # batch_size * seq_len * hidden_size
+        sequence_output = features["last_hidden_state"]
         sequence_output = self.dropout(sequence_output)
-        sequence_output_pooler = _
+        sequence_output_pooler = features["pooler_output"]
 
         # 获取图像的表示，分为49个区域，每个区域用2048维度的向量表示
         vis_embed_map = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048
@@ -229,7 +230,8 @@ class MTCCMRobertaForMMTokenClassificationCRF(RobertaPreTrainedModel):
             text_output_cl = self.text_ouput_cl(self.relu(self.text_dense_cl(sequence_output_pooler)))
             image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
             cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
-
+            print(final_bert_feats.shape)
+            print(labels.shape)
             main_loss = - self.crf(final_bert_feats, labels, mask=input_mask.byte(), reduction='mean')
             alpha = 0.88
             loss =  alpha * main_loss + (1 - alpha) * cl_loss
