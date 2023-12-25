@@ -110,20 +110,18 @@ class RobertaCrossEncoder(nn.Module):
         return all_encoder_layers
 
 
-class MTCCMBertForMMTokenClassificationCRF(BertPreTrainedModel):
-    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels=2):
-        super(MTCCMBertForMMTokenClassificationCRF, self).__init__(config)
-        self.num_labels = num_labels
-        self.bert = RobertaModel(config)
-        self.self_attention = BertSelfEncoder(config)
-        self.self_attention_v2 = BertSelfEncoder(config)
+class MTCCMRobertaForMMTokenClassificationCRF(RobertaPreTrainedModel):
+    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2):
+        super(MTCCMRobertaForMMTokenClassificationCRF, self).__init__(config)
+        self.num_labels = num_labels_
+        self.roberta = RobertaModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.vismap2text = nn.Linear(2048, config.hidden_size)
-        self.txt2img_attention = BertCrossEncoder(config, layer_num1)
-        self.crs_classifier = nn.Linear(config.hidden_size * 2 * 512, 2)
-        self.classifier = nn.Linear(config.hidden_size * 2, num_labels)
+        self.txt2img_attention = RobertaCrossEncoder(config, layer_num1)
+        self.crs_classifier = nn.Linear(config.hidden_size * 2 * 128, 2)
+        self.classifier = nn.Linear(config.hidden_size * 2, num_labels_)
         self.crs_loss = nn.CrossEntropyLoss()
-        self.crf = CRF(num_labels, batch_first=True)
+        self.crf = CRF(num_labels_, batch_first=True)
         self.soft = nn.Softmax()
         self.sigmoid = nn.Sigmoid()
 
@@ -136,7 +134,8 @@ class MTCCMBertForMMTokenClassificationCRF(BertPreTrainedModel):
         self.image_dense_cl = nn.Linear(2048, config.hidden_size)
         self.image_output_cl = nn.Linear(config.hidden_size, config.hidden_size)
 
-        self.apply(self.init_bert_weights)
+        self.init_weights()
+
 
     def text_toimage_loss(self,text_h1, image_h1, temp):
 
@@ -184,11 +183,11 @@ class MTCCMBertForMMTokenClassificationCRF(BertPreTrainedModel):
     def forward(self, input_ids, segment_ids, input_mask, added_attention_mask,visual_embeds_mean, visual_embeds_att,temp=None,
                 temp_lamb=None,lamb=None, labels=None, negative_rate=None):
 
-        sequence_output, _ = self.bert(input_ids, token_type_ids=segment_ids, attention_mask=input_mask,
-                                       output_all_encoded_layers=False)  # batch_size * seq_len * hidden_size
+        features = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask)  # batch_size * seq_len * hidden_size
 
+        sequence_output = features["last_hidden_state"]
         sequence_output = self.dropout(sequence_output)
-        sequence_output_pooler = _
+        sequence_output_pooler = features["pooler_output"]
 
         vis_embed_map = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048
 

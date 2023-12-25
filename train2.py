@@ -9,10 +9,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer,BertConfig
-from modules.model_architecture.MAF_bert_model import MTCCMBertForMMTokenClassificationCRF
+from modules.model_architecture.MAF_roberta_model import MTCCMRobertaForMMTokenClassificationCRF
 from modules.resnet import resnet as resnet
 from modules.resnet.resnet_utils import myResnet
-from modules.datasets.dataset import convert_mm_examples_to_features,MNERProcessor
+from modules.datasets.dataset_roberta import convert_mm_examples_to_features,MNERProcessor
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)                        
 from pytorch_pretrained_bert.optimization import BertAdam,warmup_linear
@@ -240,7 +240,7 @@ if args.do_train:
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
 if args.mm_model == 'MTCCMBert':
-    model = MTCCMBertForMMTokenClassificationCRF.from_pretrained(args.bert_model,
+    model = MTCCMRobertaForMMTokenClassificationCRF.from_pretrained(args.bert_model,
                                                                     cache_dir=args.cache_dir, layer_num1=args.layer_num1,
                                                                     layer_num2=args.layer_num2,
                                                                     layer_num3=args.layer_num3,
@@ -468,7 +468,7 @@ if args.do_train:
         print("Overall: ", p, r, f1)
         F_score_dev = f1
 
-        if F_score_dev > max_dev_f1:
+        if F_score_dev >= max_dev_f1:
             # Save a trained model and the associated configuration
             model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
             encoder_to_save = encoder.module if hasattr(encoder,
@@ -485,15 +485,14 @@ if args.do_train:
             max_dev_f1 = F_score_dev
             best_dev_epoch = train_idx
 
-print("**************************************************")
-print("The best epoch on the dev set: ", best_dev_epoch)
-print("The best Overall-F1 score on the dev set: ", max_dev_f1)
-print('\n')
+    print("**************************************************")
+    print("The best epoch on the dev set: ", best_dev_epoch)
+    print("The best Overall-F1 score on the dev set: ", max_dev_f1)
+    print('\n')
 
 # loadmodel
-
 if args.mm_model == 'MTCCMBert':
-    model = MTCCMBertForMMTokenClassificationCRF(args.bert_model, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
+    model = MTCCMRobertaForMMTokenClassificationCRF.from_pretrained(args.bert_model, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
                                                     layer_num3=args.layer_num3, num_labels_=num_labels)
     model.load_state_dict(torch.load(output_model_file))
     model.to(device)
