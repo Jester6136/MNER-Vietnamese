@@ -8,7 +8,7 @@ import random
 import numpy as np
 import torch
 import torch.nn.functional as F
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer,BertConfig
 from modules.model_architecture.MAF_bert_model import MTCCMBertForMMTokenClassificationCRF
 from modules.resnet import resnet as resnet
 from modules.resnet.resnet_utils import myResnet
@@ -17,8 +17,10 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)                        
 from pytorch_pretrained_bert.optimization import BertAdam,warmup_linear
 from ner_evaluate import evaluate_each_class
+from seqeval.metrics import classification_report
 from ner_evaluate import evaluate
 from tqdm import tqdm, trange
+import json
 CONFIG_NAME = 'bert_config.json'
 WEIGHTS_NAME = 'pytorch_model.bin'
 
@@ -223,7 +225,6 @@ label_list = processor.get_labels()
 auxlabel_list = processor.get_auxlabels()
 num_labels = len(label_list) + 1  # label 0 corresponds to padding, label in label_list starts from 1
 
-
 start_label_id = processor.get_start_label_id()
 stop_label_id = processor.get_stop_label_id()
 
@@ -239,11 +240,11 @@ if args.do_train:
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
 if args.mm_model == 'MTCCMBert':
-        model = MTCCMBertForMMTokenClassificationCRF.from_pretrained(args.bert_model,
+    model = MTCCMBertForMMTokenClassificationCRF.from_pretrained(args.bert_model,
                                                                     cache_dir=args.cache_dir, layer_num1=args.layer_num1,
                                                                     layer_num2=args.layer_num2,
                                                                     layer_num3=args.layer_num3,
-                                                                    num_labels=num_labels)
+                                                                    num_labels_=num_labels)
 else:
     print('please define your MNER Model')
 
@@ -454,7 +455,7 @@ if args.do_train:
 
         report = classification_report(y_true, y_pred, digits=4)
         sentence_list = []
-        dev_data, imgs, _ = processor._read_mmtsv(os.path.join(args.data_dir, "dev.txt"))
+        dev_data, imgs, _ = processor._read_sbtsv(os.path.join(args.data_dir, "dev.txt"))
         for i in range(len(y_pred)):
             sentence = dev_data[i][0]
             sentence_list.append(sentence)
@@ -489,18 +490,18 @@ print("The best epoch on the dev set: ", best_dev_epoch)
 print("The best Overall-F1 score on the dev set: ", max_dev_f1)
 print('\n')
 
-config = BertConfig(output_config_file)
+# loadmodel
+
 if args.mm_model == 'MTCCMBert':
-    model = MTCCMBertForMMTokenClassificationCRF(config, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
-                                                    layer_num3=args.layer_num3, num_labels=num_labels)
+    model = MTCCMBertForMMTokenClassificationCRF(args.bert_model, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
+                                                    layer_num3=args.layer_num3, num_labels_=num_labels)
+    model.load_state_dict(torch.load(output_model_file))
+    model.to(device)
+    encoder_state_dict = torch.load(output_encoder_file)
+    encoder.load_state_dict(encoder_state_dict)
+    encoder.to(device)                                       
 else:
     print('please define your MNER Model')
-
-model.load_state_dict(torch.load(output_model_file))
-model.to(device)
-encoder_state_dict = torch.load(output_encoder_file)
-encoder.load_state_dict(encoder_state_dict)
-encoder.to(device)
 
 if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
     eval_examples = processor.get_test_examples(args.data_dir)
@@ -563,7 +564,6 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
                         tmp1_idx.append(label_ids[i][j])
                         temp_2.append(label_map[logits[i][j]])
                         tmp2_idx.append(logits[i][j])
-
                 else:
 
                     break
@@ -576,7 +576,7 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
     report = classification_report(y_true, y_pred, digits=4)
 
     sentence_list = []
-    test_data, imgs, _ = processor._read_mmtsv(os.path.join(args.data_dir, "test.txt"))
+    test_data, imgs, _ = processor._read_sbtsv(os.path.join(args.data_dir, "test.txt"))
     output_pred_file = os.path.join(args.output_dir, "mtmner_pred.txt")
     fout = open(output_pred_file, 'w')
     for i in range(len(y_pred)):

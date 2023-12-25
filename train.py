@@ -17,6 +17,7 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)                        
 from pytorch_pretrained_bert.optimization import BertAdam,warmup_linear
 from ner_evaluate import evaluate_each_class
+from seqeval.metrics import classification_report
 from ner_evaluate import evaluate
 from tqdm import tqdm, trange
 CONFIG_NAME = 'bert_config.json'

@@ -7,8 +7,8 @@ from torch import nn as nn
 from torchcrf import CRF
 import torch
 import math
+import json
 # ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
-
 class RobertaCoAttention(nn.Module):
     def __init__(self, config):
         super(RobertaCoAttention, self).__init__()
@@ -109,40 +109,38 @@ class RobertaCrossEncoder(nn.Module):
             all_encoder_layers.append(s1_hidden_states)
         return all_encoder_layers
 
-class MTCCMRobertaForMMTokenClassificationCRF(RobertaPreTrainedModel):
-    """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
-    """
-    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels=2, auxnum_labels=2):
-        super(MTCCMRobertaForMMTokenClassificationCRF, self).__init__(config)
+
+class MTCCMBertForMMTokenClassificationCRF(BertPreTrainedModel):
+    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels=2):
+        super(MTCCMBertForMMTokenClassificationCRF, self).__init__(config)
         self.num_labels = num_labels
-        self.roberta = RobertaModel(config)
+        self.bert = RobertaModel(config)
+        self.self_attention = BertSelfEncoder(config)
+        self.self_attention_v2 = BertSelfEncoder(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.vismap2text = nn.Linear(2048, config.hidden_size)
-        self.txt2img_attention = RobertaCrossEncoder(config, layer_num1)
+        self.txt2img_attention = BertCrossEncoder(config, layer_num1)
+        self.crs_classifier = nn.Linear(config.hidden_size * 2 * 512, 2)
         self.classifier = nn.Linear(config.hidden_size * 2, num_labels)
+        self.crs_loss = nn.CrossEntropyLoss()
         self.crf = CRF(num_labels, batch_first=True)
+        self.soft = nn.Softmax()
         self.sigmoid = nn.Sigmoid()
 
-        # 用于对比学习训练的头
+        self.Gate_text = nn.Linear(config.hidden_size, config.hidden_size)
+        self.Gate_image = nn.Linear(config.hidden_size, config.hidden_size)
+
         self.text_dense_cl = nn.Linear(config.hidden_size, config.hidden_size)
         self.relu = nn.ReLU()
         self.text_ouput_cl = nn.Linear(config.hidden_size, config.hidden_size)
-
         self.image_dense_cl = nn.Linear(2048, config.hidden_size)
         self.image_output_cl = nn.Linear(config.hidden_size, config.hidden_size)
 
-        # 用于计算门单元
-        self.Gate_text = nn.Linear(config.hidden_size,config.hidden_size)
-        self.Gate_image = nn.Linear(config.hidden_size,config.hidden_size)
-
-        
-        self.init_weights()
+        self.apply(self.init_bert_weights)
 
     def text_toimage_loss(self,text_h1, image_h1, temp):
-        # temp = 0.1
+
         batch_size = text_h1.shape[0]
-        # text_h1_copy=text_h1
-        # image_h1_copy=image_h1
         loss = 0
         for i in range(batch_size):
             up = torch.exp(
@@ -158,10 +156,7 @@ class MTCCMRobertaForMMTokenClassificationCRF(RobertaPreTrainedModel):
         return loss
 
     def image_totext_loss(self,text_h1, image_h1, temp):
-        # temp = 0.1
         batch_size = text_h1.shape[0]
-        # text_h1_copy=text_h1
-        # image_h1_copy=image_h1
         loss = 0
         for i in range(batch_size):
             up = torch.exp(
@@ -179,67 +174,97 @@ class MTCCMRobertaForMMTokenClassificationCRF(RobertaPreTrainedModel):
         return loss
 
     def total_loss(self,text_h1, image_h1, temp, temp_lamb):
-        # lamb = 0.5
         lamb = temp_lamb
         batch_size = text_h1.shape[0]
         loss = (1 / batch_size) * (
                     lamb * self.text_toimage_loss(text_h1, image_h1, temp) + (1 - lamb) * self.image_totext_loss(text_h1, image_h1, temp))
-        # print("total_loss:",loss)
         return loss
 
-    # this forward is just for predict, not for train
-    # dont confuse this with _forward_alg above.
-    def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_mean, visual_embeds_att, trans_matrix,temp=None,
-                temp_lamb=None,labels=None, auxlabels=None):
-        # 获得文本表示
-        features= self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask) # batch_size * seq_len * hidden_size
-        sequence_output = features["last_hidden_state"]
-        sequence_output = self.dropout(sequence_output)
-        sequence_output_pooler = features["pooler_output"]
 
-        # 获取图像的表示，分为49个区域，每个区域用2048维度的向量表示
+    def forward(self, input_ids, segment_ids, input_mask, added_attention_mask,visual_embeds_mean, visual_embeds_att,temp=None,
+                temp_lamb=None,lamb=None, labels=None, negative_rate=None):
+
+        sequence_output, _ = self.bert(input_ids, token_type_ids=segment_ids, attention_mask=input_mask,
+                                       output_all_encoded_layers=False)  # batch_size * seq_len * hidden_size
+
+        sequence_output = self.dropout(sequence_output)
+        sequence_output_pooler = _
+
         vis_embed_map = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048
-        # 将图像的维度映射到与bert维度相同，方便进行注意力计算
+
         converted_vis_embed_map = self.vismap2text(vis_embed_map)  # self.batch_size, 49, hidden_dim
 
         # '''
         # apply txt2img attention mechanism to obtain image-based text representations
-        img_mask = added_attention_mask[:,:49]  # batch_size * 49
-        extended_img_mask = img_mask.unsqueeze(1).unsqueeze(2) # batch_size * 1 * 1 * 49
-        extended_img_mask = extended_img_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
+        img_mask = added_attention_mask[:, :49]  # batch_size * 49
+        extended_img_mask = img_mask.unsqueeze(1).unsqueeze(2)  # batch_size * 1 * 1 * 49
+        extended_img_mask = extended_img_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
         extended_img_mask = (1.0 - extended_img_mask) * -10000.0
 
         cross_encoder = self.txt2img_attention(sequence_output, converted_vis_embed_map, extended_img_mask)
-        # 获取text-aware image 表示
+
         cross_output_layer = cross_encoder[-1]  # self.batch_size * text_len * hidden_dim
 
-        # 计算门单元
-        Gate = self.sigmoid((self.Gate_text(sequence_output) + self.Gate_image(cross_output_layer)))
+        # copy
+        cross_output_layer_crs = cross_output_layer.clone()
+        labels_crs = torch.ones(sequence_output.shape[0], dtype=torch.long).cuda()
 
 
-        # 获得通过门单元的图像的表示
-        gated_converted_att_vis_embed = Gate * cross_output_layer
+        if (negative_rate != None and cross_output_layer.shape[0] > negative_rate):
+            all_negative_samples = cross_output_layer_crs[(cross_output_layer.shape[0] - negative_rate):]
+            front_negative_samples = all_negative_samples[:int(all_negative_samples.shape[0] / 2)]
+            after_negative_samples = all_negative_samples[int(all_negative_samples.shape[0] / 2):]
+            for i, n in enumerate(front_negative_samples):
+                temp_samples = front_negative_samples[i].clone()
+                front_negative_samples[i] = after_negative_samples[i].clone()
+                after_negative_samples[i] = temp_samples.clone()
+            labels_crs[(cross_output_layer.shape[0] - negative_rate):] = 0
+
+        cross_output = cross_output_layer
+
+        if labels is not None:
+            cross_output = cross_output_layer_crs
 
 
-        final_output = torch.cat((sequence_output, gated_converted_att_vis_embed), dim=-1) # batch_size * seq_len * 2(hidden_size)
+        crs_result = self.crs_classifier(
+            torch.cat((sequence_output, cross_output), dim=-1).view(sequence_output.shape[0], -1))
+
+
+
+        P = self.soft(crs_result)  # batch_size * 2
+        P = P[:, -1]
+        P = P.unsqueeze(-1).unsqueeze(-1)
+
+        new_cross_output_layer = P * cross_output
+
+        Gate = self.sigmoid((self.Gate_text(sequence_output) + self.Gate_image(new_cross_output_layer)))
+
+        gated_converted_att_vis_embed = Gate * new_cross_output_layer
+
+        final_output = torch.cat((sequence_output, gated_converted_att_vis_embed),
+                                 dim=-1)  # batch_size * seq_len * 2(hidden_size)
         bert_feats = self.classifier(final_output)  # batch_size * seq_len * 13
         final_bert_feats = bert_feats
 
         if labels is not None:
-            # 计算对比学习的损失
+            crs_loss = self.crs_loss(crs_result.view(-1, 2), labels_crs.view(-1))
+
             text_output_cl = self.text_ouput_cl(self.relu(self.text_dense_cl(sequence_output_pooler)))
             image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
+
             cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
-            print(final_bert_feats.shape)
-            print(labels.shape)
+
             main_loss = - self.crf(final_bert_feats, labels, mask=input_mask.byte(), reduction='mean')
-            alpha = 0.88
-            loss =  alpha * main_loss + (1 - alpha) * cl_loss
+            alpha = lamb
+            aux_loss = crs_loss + cl_loss
+            loss = alpha * main_loss + (1 - alpha) * aux_loss
 
             return loss
         else:
             pred_tags = self.crf.decode(final_bert_feats, mask=input_mask.byte())
             return pred_tags
+
+
 
 
 if __name__ == "__main__":
