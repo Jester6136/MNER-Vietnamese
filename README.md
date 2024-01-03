@@ -16,6 +16,9 @@ pip install -r requirements.txt
 ## Datasets
 vlsp [here](https://vlsp.org.vn/vlsp2021/eval/ner)
 
+### Data Format
+The dataset is structured in a specific format, and you can find sample data in the sample_data folder for reference. Ensure your model or processing pipeline is compatible with this format.
+
 ## Training
 
 Run:
