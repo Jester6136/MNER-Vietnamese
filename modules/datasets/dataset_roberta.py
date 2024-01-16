@@ -334,9 +334,8 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
             image = image_process(image_path, transform)
         except:
             count += 1
-            image_path = os.path.join(path_img, 'background.jpg')
-            image = image_process(image_path, transform)
-            print('error: ',image_path)
+            image_path_fail = os.path.join(path_img, 'background.jpg')
+            image = image_process(image_path_fail, transform)
 
         else:
             if ex_index < 2:
@@ -357,7 +356,6 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
 
     print('the number of problematic samples: ' + str(count))
     return features
-
 
 
 if __name__ == "__main__":
