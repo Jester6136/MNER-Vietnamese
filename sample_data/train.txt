@@ -1,4 +1,4 @@
-IMGID:000001
+IMGID:NaN
 Địa	O
 chỉ	O
 IP	O

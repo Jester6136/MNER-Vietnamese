@@ -368,6 +368,6 @@ if __name__ == "__main__":
     start_label_id = processor.get_start_label_id()
     stop_label_id = processor.get_stop_label_id()
 
-    data_dir = 'data'
+    data_dir = r'sample_data'
     train_examples = processor.get_train_examples(data_dir)
     print(train_examples[0].img_id)
