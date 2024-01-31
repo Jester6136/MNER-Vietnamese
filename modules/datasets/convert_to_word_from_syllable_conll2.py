@@ -32,17 +32,16 @@ def simplify_labels(labels):
     if not labels:
         return None
 
-    # Extract the prefix and label type from the first label
-    parts = labels[0].split('-')
-    if len(parts) >= 2:
-        prefix, label_type = parts[:2]
-    else:
-        return labels[0]
+    # Check if all labels are 'O'
+    if all(label == 'O' for label in labels):
+        return 'O'
 
-    # Check if all labels have the same prefix and label type
-    if all(label.startswith(prefix) and len(label.split('-')) >= 2 and label.split('-')[:2] == [prefix, label_type] for label in labels):
-        return '-'.join([prefix, label_type] + parts[2:])
+    # Check for 'B-' or 'I-' prefixes and return the corresponding label
+    for label in labels:
+        if label.startswith('B-') or label.startswith('I-'):
+            return label
 
+    # If no 'B-' or 'I-' prefixes are found, return the first label
     return labels[0]
 
 
@@ -53,34 +52,39 @@ def align_labels(token1, label1, token2):
     j = 0  # Pointer token2
     flag_B = False
     while j < len(token2):
-        if token2[j] == token1[i]:
-            flag_B = False
-            # If tokens match, copy label from label1 to label2
-            label2.append(label1[i])
-            i += 1
-            j += 1
-        else:
-            j += 1
-            if label1[i] != 'O':
-                tmp_label = label1[i]
-                if label1[i].startswith('B-') and flag_B:
-                    flag_B = False
-                    tmp_label = 'I-' + tmp_label[2:]
-                flag_B = True
-                label2.append(tmp_label)
-                try:
-                    if token2[j] == token1[i + 1]:
-                        i += 1
-                except:
-                    continue
-            else:
+        try:
+            if token2[j] == token1[i]:
                 flag_B = False
+                # If tokens match, copy label from label1 to label2
                 label2.append(label1[i])
-                try:
-                    if token2[j] == token1[i + 1]:
-                        i += 1
-                except:
-                    continue
+                i += 1
+                j += 1
+            else:
+                j += 1
+                if label1[i] != 'O':
+                    tmp_label = label1[i]
+                    if label1[i].startswith('B-') and flag_B:
+                        flag_B = False
+                        tmp_label = 'I-' + tmp_label[2:]
+                    flag_B = True
+                    label2.append(tmp_label)
+                    try:
+                        if token2[j] == token1[i + 1]:
+                            i += 1
+                    except:
+                        continue
+                else:
+                    flag_B = False
+                    label2.append(label1[i])
+                    try:
+                        if token2[j] == token1[i + 1]:
+                            i += 1
+                    except:
+                        continue
+        except:
+            #Check
+            print("Warning: Check None in file exported")
+            break
     return label2
 
 
