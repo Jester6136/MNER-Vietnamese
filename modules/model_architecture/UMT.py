@@ -128,7 +128,7 @@ class RobertaSelfEncoder(nn.Module):
 class UMT_model(RobertaPreTrainedModel):
     """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
     """
-    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels=2):
+    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels_=2):
         super(UMT_model, self).__init__(config)
         self.num_labels = num_labels_
         self.roberta = RobertaModel(config)
@@ -144,10 +144,10 @@ class UMT_model(RobertaPreTrainedModel):
         self.gate = nn.Linear(config.hidden_size * 2, config.hidden_size)
         ### self.self_attention = BertLastSelfAttention(config)
         self.classifier = nn.Linear(config.hidden_size * 2, num_labels_)
-        self.aux_classifier = nn.Linear(config.hidden_size, auxnum_labels)
+        self.aux_classifier = nn.Linear(config.hidden_size, auxnum_labels_)
 
         self.crf = CRF(num_labels_, batch_first=True)
-        self.aux_crf = CRF(auxnum_labels, batch_first=True)
+        self.aux_crf = CRF(auxnum_labels_, batch_first=True)
 
         self.init_weights()
 
@@ -157,20 +157,19 @@ class UMT_model(RobertaPreTrainedModel):
                 labels=None, auxlabels=None):
         # Get the emission scores from the BiLSTM
         features = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask)  # batch_size * seq_len * hidden_size
-
         sequence_output = features["last_hidden_state"]
         sequence_output = self.dropout(sequence_output)
 
         extended_txt_mask = input_mask.unsqueeze(1).unsqueeze(2)
         extended_txt_mask = extended_txt_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
         extended_txt_mask = (1.0 - extended_txt_mask) * -10000.0
-        aux_addon_sequence_encoder = self.self_attention(sequence_output, extended_txt_mask)
+        aux_addon_sequence_encoder = self.self_attention(sequence_output, extended_txt_mask)[0]
         aux_addon_sequence_output = aux_addon_sequence_encoder[-1]
         aux_bert_feats = self.aux_classifier(aux_addon_sequence_output)
         #######aux_bert_feats = self.aux_classifier(sequence_output)
         trans_bert_feats = torch.matmul(aux_bert_feats, trans_matrix.float())
 
-        main_addon_sequence_encoder = self.self_attention_v2(sequence_output, extended_txt_mask)
+        main_addon_sequence_encoder = self.self_attention_v2(sequence_output, extended_txt_mask)[0]
         main_addon_sequence_output = main_addon_sequence_encoder[-1]
 
         vis_embed_map = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048

@@ -265,7 +265,7 @@ if args.mm_model == 'MTCCMBert':
                                                                     cache_dir=args.cache_dir, layer_num1=args.layer_num1,
                                                                     layer_num2=args.layer_num2,
                                                                     layer_num3=args.layer_num3,
-                                                                    num_labels_=num_labels, auxnum_labels = auxnum_labels)
+                                                                    num_labels_=num_labels, auxnum_labels_ = auxnum_labels)
 else:
     print('please define your MNER Model')
 
@@ -512,7 +512,7 @@ if args.do_train:
 # loadmodel
 if args.mm_model == 'MTCCMBert':
     model = UMT_model.from_pretrained(args.bert_model, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
-                                                    layer_num3=args.layer_num3, num_labels_=num_labels, auxnum_labels = auxnum_labels)
+                                                    layer_num3=args.layer_num3, num_labels_=num_labels, auxnum_labels_ = auxnum_labels)
     model.load_state_dict(torch.load(output_model_file))
     model.to(device)
     encoder_state_dict = torch.load(output_encoder_file)
