@@ -24,7 +24,7 @@ The dataset is structured in a specific format, and you can find sample data in 
 Run:
 
 ```bash
-python train2.py \
+python train_maf.py \
 --do_train \
 --do_eval \
 --output_dir ./output_result \
@@ -34,10 +34,10 @@ python train2.py \
 --temp_lamb 0.7 \
 --negative_rate 16 \
 --learning_rate 3e-5 \
---data_dir vlsp \
+--data_dir sample_data \
 --num_train_epochs 50 \
 --train_batch_size 128 \
---path_image vlsp/ner_image \
+--path_image sample_data/ner_image \
 --task_name sonba \
 --resnet_root "modules/resnet" \
 --cache_dir "cache" \

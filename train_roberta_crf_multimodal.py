@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer,BertConfig
-from modules.model_architecture.couple_crossmodalattention_bert_crf import CoupleCrossModalRobertaTokenClassificationCRF
+from modules.model_architecture.roberta_crf_multimodal import RobertaCRFMultimodal
 from modules.resnet import resnet as resnet
 from modules.resnet.resnet_utils import myResnet
 from modules.datasets.dataset_roberta import convert_mm_examples_to_features,MNERProcessor
@@ -240,7 +240,7 @@ if args.do_train:
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
 if args.mm_model == 'MTCCMBert':
-    model = CoupleCrossModalRobertaTokenClassificationCRF.from_pretrained(args.bert_model,
+    model = RobertaCRFMultimodal.from_pretrained(args.bert_model,
                                                                     cache_dir=args.cache_dir, layer_num1=args.layer_num1,
                                                                     layer_num2=args.layer_num2,
                                                                     layer_num3=args.layer_num3,
@@ -491,7 +491,7 @@ if args.do_train:
 
 # loadmodel
 if args.mm_model == 'MTCCMBert':
-    model = CoupleCrossModalRobertaTokenClassificationCRF.from_pretrained(args.bert_model, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
+    model = RobertaCRFMultimodal.from_pretrained(args.bert_model, layer_num1=args.layer_num1, layer_num2=args.layer_num2,
                                                     layer_num3=args.layer_num3, num_labels_=num_labels)
     model.load_state_dict(torch.load(output_model_file))
     model.to(device)

@@ -1,14 +1,91 @@
-from transformers import RobertaModel
+# coding=utf-8
+# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""PyTorch BERT model."""
+
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import copy
-from transformers.models.roberta.modeling_roberta import RobertaIntermediate,RobertaOutput,RobertaSelfOutput,RobertaPreTrainedModel,RobertaLayer
-from transformers import BertConfig
-from torch import nn as nn
-from torchcrf import CRF
-import torch
-import math
 import json
-# ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
+import logging
+import math
+import os
+import shutil
+import tarfile
+import tempfile
+import sys
+from io import open
+from torchcrf import CRF
+
+import torch
+from torch import nn
+from torch.nn import CrossEntropyLoss
+
+import torch.nn.functional as F
+from torch.autograd import Variable
+
+logger = logging.getLogger(__name__)
+
+def gelu(x):
+    """Implementation of the gelu activation function.
+        For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
+        0.5 * x * (1 + torch.tanh(math.sqrt(2 / math.pi) * (x + 0.044715 * torch.pow(x, 3))))
+        Also see https://arxiv.org/abs/1606.08415
+    """
+    return x * 0.5 * (1.0 + torch.erf(x / math.sqrt(2.0)))
+
+def swish(x):
+    return x * torch.sigmoid(x)
+
+ACT2FN = {"gelu": gelu, "relu": torch.nn.functional.relu, "swish": swish}
+
+from transformers import RobertaModel
+from transformers.models.roberta.modeling_roberta import RobertaLayer, RobertaPreTrainedModel, RobertaOutput, RobertaSelfOutput, RobertaIntermediate
+
+class RobertaSelfEncoder(nn.Module):
+    def __init__(self, config):
+        super(RobertaSelfEncoder, self).__init__()
+        layer = RobertaLayer(config)
+        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(1)])
+
+    def forward(self, hidden_states, attention_mask, output_all_encoded_layers=True):
+        all_encoder_layers = []
+        for layer_module in self.layer:
+            hidden_states = layer_module(hidden_states, attention_mask)
+            if output_all_encoded_layers:
+                all_encoder_layers.append(hidden_states)
+        if not output_all_encoded_layers:
+            all_encoder_layers.append(hidden_states)
+        return all_encoder_layers
+
+class RobertaCrossEncoder(nn.Module):
+    def __init__(self, config, layer_num):
+        super(RobertaCrossEncoder, self).__init__()
+        layer = RobertaCrossAttentionLayer(config)
+        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(layer_num)])
+
+    def forward(self, s1_hidden_states, s2_hidden_states, s2_attention_mask, output_all_encoded_layers=True):
+        all_encoder_layers = []
+        for layer_module in self.layer:
+            s1_hidden_states = layer_module(s1_hidden_states, s2_hidden_states, s2_attention_mask)
+            if output_all_encoded_layers:
+                all_encoder_layers.append(s1_hidden_states)
+        if not output_all_encoded_layers:
+            all_encoder_layers.append(s1_hidden_states)
+        return all_encoder_layers
+
 class RobertaCoAttention(nn.Module):
     def __init__(self, config):
         super(RobertaCoAttention, self).__init__()
@@ -67,7 +144,6 @@ class RobertaCoAttention(nn.Module):
         context_layer = context_layer.view(*new_context_layer_shape)
         return context_layer
 
-
 class RobertaCrossAttention(nn.Module):
     def __init__(self, config):
         super(RobertaCrossAttention, self).__init__()
@@ -78,7 +154,6 @@ class RobertaCrossAttention(nn.Module):
         s1_cross_output = self.self(s1_input_tensor, s2_input_tensor, s2_attention_mask)
         attention_output = self.output(s1_cross_output, s1_input_tensor)
         return attention_output
-
 
 class RobertaCrossAttentionLayer(nn.Module):
     def __init__(self, config):
@@ -93,43 +168,11 @@ class RobertaCrossAttentionLayer(nn.Module):
         layer_output = self.output(intermediate_output, attention_output)
         return layer_output
 
-class RobertaCrossEncoder(nn.Module):
-    def __init__(self, config, layer_num):
-        super(RobertaCrossEncoder, self).__init__()
-        layer = RobertaCrossAttentionLayer(config)
-        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(layer_num)])
-
-    def forward(self, s1_hidden_states, s2_hidden_states, s2_attention_mask, output_all_encoded_layers=True):
-        all_encoder_layers = []
-        for layer_module in self.layer:
-            s1_hidden_states = layer_module(s1_hidden_states, s2_hidden_states, s2_attention_mask)
-            if output_all_encoded_layers:
-                all_encoder_layers.append(s1_hidden_states)
-        if not output_all_encoded_layers:
-            all_encoder_layers.append(s1_hidden_states)
-        return all_encoder_layers
-
-class RobertaSelfEncoder(nn.Module):
-    def __init__(self, config):
-        super(RobertaSelfEncoder, self).__init__()
-        layer = RobertaLayer(config)
-        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(1)])
-
-    def forward(self, hidden_states, attention_mask, output_all_encoded_layers=True):
-        all_encoder_layers = []
-        for layer_module in self.layer:
-            hidden_states = layer_module(hidden_states, attention_mask)
-            if output_all_encoded_layers:
-                all_encoder_layers.append(hidden_states)
-        if not output_all_encoded_layers:
-            all_encoder_layers.append(hidden_states)
-        return all_encoder_layers
-
-class UMT_model(RobertaPreTrainedModel):
+class UMT(RobertaPreTrainedModel):
     """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
     """
-    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels_=2):
-        super(UMT_model, self).__init__(config)
+    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels=2):
+        super(UMT, self).__init__(config)
         self.num_labels = num_labels_
         self.roberta = RobertaModel(config)
         #self.trans_matrix = torch.zeros(num_labels, auxnum_labels)
@@ -144,10 +187,10 @@ class UMT_model(RobertaPreTrainedModel):
         self.gate = nn.Linear(config.hidden_size * 2, config.hidden_size)
         ### self.self_attention = BertLastSelfAttention(config)
         self.classifier = nn.Linear(config.hidden_size * 2, num_labels_)
-        self.aux_classifier = nn.Linear(config.hidden_size, auxnum_labels_)
+        self.aux_classifier = nn.Linear(config.hidden_size, auxnum_labels)
 
         self.crf = CRF(num_labels_, batch_first=True)
-        self.aux_crf = CRF(auxnum_labels_, batch_first=True)
+        self.aux_crf = CRF(auxnum_labels, batch_first=True)
 
         self.init_weights()
 
@@ -163,15 +206,17 @@ class UMT_model(RobertaPreTrainedModel):
         extended_txt_mask = input_mask.unsqueeze(1).unsqueeze(2)
         extended_txt_mask = extended_txt_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
         extended_txt_mask = (1.0 - extended_txt_mask) * -10000.0
-        aux_addon_sequence_encoder = self.self_attention(sequence_output, extended_txt_mask)[0]
+        aux_addon_sequence_encoder = self.self_attention(sequence_output, extended_txt_mask)
+
         aux_addon_sequence_output = aux_addon_sequence_encoder[-1]
+        aux_addon_sequence_output = aux_addon_sequence_output[0]
         aux_bert_feats = self.aux_classifier(aux_addon_sequence_output)
         #######aux_bert_feats = self.aux_classifier(sequence_output)
         trans_bert_feats = torch.matmul(aux_bert_feats, trans_matrix.float())
 
-        main_addon_sequence_encoder = self.self_attention_v2(sequence_output, extended_txt_mask)[0]
+        main_addon_sequence_encoder = self.self_attention_v2(sequence_output, extended_txt_mask)
         main_addon_sequence_output = main_addon_sequence_encoder[-1]
-
+        main_addon_sequence_output = main_addon_sequence_output[0]
         vis_embed_map = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048
         converted_vis_embed_map = self.vismap2text(vis_embed_map)  # self.batch_size, 49, hidden_dim
 
@@ -230,7 +275,6 @@ class UMT_model(RobertaPreTrainedModel):
             pred_tags = self.crf.decode(final_bert_feats, mask=input_mask.byte())
             return pred_tags
 
-
-if __name__ == "__main__":
-    model = UMT_model.from_pretrained('vinai/phobert-base-v2',cache_dir='cache')
+if __name__ == "__main__": 
+    model = UMT.from_pretrained('vinai/phobert-base-v2',cache_dir='cache')
     print(model)
