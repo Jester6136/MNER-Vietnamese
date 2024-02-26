@@ -425,7 +425,7 @@ if args.do_train:
 
             with torch.no_grad():
                 imgs_f, img_mean, img_att = encoder(img_feats)
-                predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask)
+                predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask,imgs_f, img_att)
 
             logits = predicted_label_seq_ids
             label_ids = label_ids.to('cpu').numpy()
@@ -542,7 +542,7 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
 
         with torch.no_grad():
             imgs_f, img_mean, img_att = encoder(img_feats)
-            predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask)
+            predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask,imgs_f, img_att)
 
         logits = predicted_label_seq_ids
         label_ids = label_ids.to('cpu').numpy()
