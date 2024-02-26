@@ -371,7 +371,7 @@ if args.do_train:
                 imgs_f, img_mean, img_att = encoder(img_feats)
 
             neg_log_likelihood = model(input_ids, segment_ids, input_mask, added_input_mask,
-                                        imgs_f, img_att, temp,temp_lamb,label_ids)
+                                        imgs_f, img_att,label_ids)
 
             if n_gpu > 1:
                 neg_log_likelihood = neg_log_likelihood.mean()  # mean() to average on multi-gpu.
@@ -425,7 +425,7 @@ if args.do_train:
 
             with torch.no_grad():
                 imgs_f, img_mean, img_att = encoder(img_feats)
-                predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask,imgs_f, img_att)
+                predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask)
 
             logits = predicted_label_seq_ids
             label_ids = label_ids.to('cpu').numpy()
@@ -542,7 +542,7 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
 
         with torch.no_grad():
             imgs_f, img_mean, img_att = encoder(img_feats)
-            predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask,imgs_f, img_att)
+            predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask)
 
         logits = predicted_label_seq_ids
         label_ids = label_ids.to('cpu').numpy()
