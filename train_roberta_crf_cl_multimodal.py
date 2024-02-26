@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from transformers import AutoTokenizer,BertConfig
-from modules.model_architecture.couple_crossmodalattention_bert_crf import RobertaCRFCLMultimodal
+from modules.model_architecture.roberta_crf_cl_multimodal import RobertaCRFCLMultimodal
 from modules.resnet import resnet as resnet
 from modules.resnet.resnet_utils import myResnet
 from modules.datasets.dataset_roberta import convert_mm_examples_to_features,MNERProcessor
