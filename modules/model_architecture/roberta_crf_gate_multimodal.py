@@ -109,14 +109,11 @@ class RobertaCrossEncoder(nn.Module):
             all_encoder_layers.append(s1_hidden_states)
         return all_encoder_layers
 
-import torch
-import torch.nn.functional as F  # For softmax
-
-class RobertaCRFMultimodal(RobertaPreTrainedModel):
+class RobertaCRFGateMultimodal(RobertaPreTrainedModel):
     """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
     """
     def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels=2):
-        super(RobertaCRFMultimodal, self).__init__(config)
+        super(RobertaCRFGateMultimodal, self).__init__(config)
         self.num_labels = num_labels_
         self.roberta = RobertaModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -124,7 +121,10 @@ class RobertaCRFMultimodal(RobertaPreTrainedModel):
         self.txt2img_attention = RobertaCrossEncoder(config, layer_num1)
         self.classifier = nn.Linear(config.hidden_size * 2, num_labels_)
         self.crf = CRF(num_labels_, batch_first=True)
-        
+        self.sigmoid = nn.Sigmoid()
+        self.Gate_text = nn.Linear(config.hidden_size, config.hidden_size)
+        self.Gate_image = nn.Linear(config.hidden_size, config.hidden_size)
+
         self.init_weights()
 
     # this forward is just for predict, not for train
@@ -147,7 +147,10 @@ class RobertaCRFMultimodal(RobertaPreTrainedModel):
         cross_encoder = self.txt2img_attention(sequence_output, converted_vis_embed_map, extended_img_mask)
         cross_output_layer = cross_encoder[-1]  # self.batch_size * text_len * hidden_dim
 
-        final_output = torch.cat((sequence_output, cross_output_layer), dim=-1) # batch_size * seq_len * 2(hidden_size)
+        Gate = self.sigmoid((self.Gate_text(sequence_output) + self.Gate_image(cross_output_layer)))
+        gated_converted_att_vis_embed = Gate * cross_output_layer
+
+        final_output = torch.cat((sequence_output, gated_converted_att_vis_embed), dim=-1) # batch_size * seq_len * 2(hidden_size)
         bert_feats = self.classifier(final_output)  # batch_size * seq_len * 13
 
         if labels is not None:
@@ -158,5 +161,5 @@ class RobertaCRFMultimodal(RobertaPreTrainedModel):
             return pred_tags
 
 if __name__ == "__main__":
-    model = RobertaCRFMultimodal.from_pretrained('vinai/phobert-base-v2')
+    model = RobertaCRFGateMultimodal.from_pretrained('vinai/phobert-base-v2')
     print(model)

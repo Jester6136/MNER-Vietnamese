@@ -109,35 +109,91 @@ class RobertaCrossEncoder(nn.Module):
             all_encoder_layers.append(s1_hidden_states)
         return all_encoder_layers
 
-import torch
-import torch.nn.functional as F  # For softmax
-
-class RobertaCRFMultimodal(RobertaPreTrainedModel):
+class RobertaCRFGateCLMultimodal(RobertaPreTrainedModel):
     """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
     """
     def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels=2):
-        super(RobertaCRFMultimodal, self).__init__(config)
+        super(RobertaCRFGateCLMultimodal, self).__init__(config)
         self.num_labels = num_labels_
         self.roberta = RobertaModel(config)
+        #self.trans_matrix = torch.zeros(num_labels, auxnum_labels)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.vismap2text = nn.Linear(2048, config.hidden_size)
         self.txt2img_attention = RobertaCrossEncoder(config, layer_num1)
+        ### self.self_attention = BertLastSelfAttention(config)
         self.classifier = nn.Linear(config.hidden_size * 2, num_labels_)
         self.crf = CRF(num_labels_, batch_first=True)
-        
+        self.sigmoid = nn.Sigmoid()
+
+        self.text_dense_cl = nn.Linear(config.hidden_size, config.hidden_size)
+        self.relu = nn.ReLU()
+        self.text_ouput_cl = nn.Linear(config.hidden_size, config.hidden_size)
+
+        self.image_dense_cl = nn.Linear(2048, config.hidden_size)
+        self.image_output_cl = nn.Linear(config.hidden_size, config.hidden_size)
+
+        self.Gate_text = nn.Linear(config.hidden_size,config.hidden_size)
+        self.Gate_image = nn.Linear(config.hidden_size,config.hidden_size)
+
         self.init_weights()
+
+    def text_toimage_loss(self,text_h1, image_h1, temp):
+        batch_size = text_h1.shape[0]
+        loss = 0
+        for i in range(batch_size):
+            up = torch.exp(
+                (torch.matmul(text_h1[i], image_h1[i]) / (torch.norm(text_h1[i]) * torch.norm(image_h1[i]))) / temp
+            )
+
+            down = torch.sum(
+                torch.exp((torch.sum(text_h1[i] * image_h1, dim=-1) / (
+                            torch.norm(text_h1[i]) * torch.norm(image_h1, dim=1))) / temp), dim=-1)
+
+            loss += -torch.log(up / down)
+
+        return loss
+
+    def image_totext_loss(self,text_h1, image_h1, temp):
+        batch_size = text_h1.shape[0]
+        loss = 0
+        for i in range(batch_size):
+            up = torch.exp(
+                (
+                        torch.matmul(image_h1[i], text_h1[i]) / (torch.norm(image_h1[i]) * torch.norm(text_h1[i]))
+                ) / temp
+            )
+
+            down = torch.sum(
+                torch.exp((torch.sum(image_h1[i] * text_h1, dim=-1) / (
+                            torch.norm(image_h1[i]) * torch.norm(text_h1, dim=1))) / temp), dim=-1)
+
+            loss += -torch.log(up / down)
+
+        return loss
+
+    def total_loss(self,text_h1, image_h1, temp, temp_lamb):
+        # lamb = 0.5
+        lamb = temp_lamb
+        batch_size = text_h1.shape[0]
+        loss = (1 / batch_size) * (
+                    lamb * self.text_toimage_loss(text_h1, image_h1, temp) + (1 - lamb) * self.image_totext_loss(text_h1, image_h1, temp))
+        # print("total_loss:",loss)
+        return loss
 
     # this forward is just for predict, not for train
     # dont confuse this with _forward_alg above.
-    def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_mean, visual_embeds_att, labels=None):
+    def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_mean, visual_embeds_att,temp=None,
+                temp_lamb=None,labels=None):
         features = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask) # batch_size * seq_len * hidden_size
 
         sequence_output = features["last_hidden_state"]
         sequence_output = self.dropout(sequence_output)
+        sequence_output_pooler = features["pooler_output"]
 
         vis_embed_map = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048
         converted_vis_embed_map = self.vismap2text(vis_embed_map)  # self.batch_size, 49, hidden_dim
 
+        # '''
         # apply txt2img attention mechanism to obtain image-based text representations
         img_mask = added_attention_mask[:,:49]  # batch_size * 49
         extended_img_mask = img_mask.unsqueeze(1).unsqueeze(2) # batch_size * 1 * 1 * 49
@@ -147,16 +203,31 @@ class RobertaCRFMultimodal(RobertaPreTrainedModel):
         cross_encoder = self.txt2img_attention(sequence_output, converted_vis_embed_map, extended_img_mask)
         cross_output_layer = cross_encoder[-1]  # self.batch_size * text_len * hidden_dim
 
-        final_output = torch.cat((sequence_output, cross_output_layer), dim=-1) # batch_size * seq_len * 2(hidden_size)
+        Gate = self.sigmoid((self.Gate_text(sequence_output) + self.Gate_image(cross_output_layer)))
+
+
+        gated_converted_att_vis_embed = Gate * cross_output_layer
+
+        final_output = torch.cat((sequence_output, gated_converted_att_vis_embed), dim=-1) # batch_size * seq_len * 2(hidden_size)
         bert_feats = self.classifier(final_output)  # batch_size * seq_len * 13
+        final_bert_feats = bert_feats
 
         if labels is not None:
-            main_loss = -self.crf(bert_feats, labels, mask=input_mask.byte(), reduction='mean')
-            return main_loss
+            text_output_cl = self.text_ouput_cl(self.relu(self.text_dense_cl(sequence_output_pooler)))
+            image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
+            cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
+
+            main_loss = - self.crf(final_bert_feats, labels, mask=input_mask.byte(), reduction='mean')
+            alpha = 0.88
+            loss =  alpha * main_loss + (1 - alpha) * cl_loss
+
+            return loss
         else:
-            pred_tags = self.crf.decode(bert_feats, mask=input_mask.byte())
+            pred_tags = self.crf.decode(final_bert_feats, mask=input_mask.byte())
             return pred_tags
 
+
+
 if __name__ == "__main__":
-    model = RobertaCRFMultimodal.from_pretrained('vinai/phobert-base-v2')
+    model = RobertaCRFGateCLMultimodal.from_pretrained('vinai/phobert-base-v2')
     print(model)

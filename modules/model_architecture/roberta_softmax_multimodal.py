@@ -112,51 +112,57 @@ class RobertaCrossEncoder(nn.Module):
 import torch
 import torch.nn.functional as F  # For softmax
 
-class RobertaCRFMultimodal(RobertaPreTrainedModel):
-    """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
+class RobertaSoftmaxMultimodal(RobertaPreTrainedModel):
+    """Coupled Cross-Modal Attention BERT model for token-level classification with a softmax layer on top.
     """
-    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels=2):
-        super(RobertaCRFMultimodal, self).__init__(config)
+    def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1, num_labels_=2, auxnum_labels=2):
+        super(RobertaSoftmaxMultimodal, self).__init__(config)
         self.num_labels = num_labels_
         self.roberta = RobertaModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.vismap2text = nn.Linear(2048, config.hidden_size)
         self.txt2img_attention = RobertaCrossEncoder(config, layer_num1)
         self.classifier = nn.Linear(config.hidden_size * 2, num_labels_)
-        self.crf = CRF(num_labels_, batch_first=True)
-        
+
         self.init_weights()
 
-    # this forward is just for predict, not for train
-    # dont confuse this with _forward_alg above.
     def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_mean, visual_embeds_att, labels=None):
-        features = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask) # batch_size * seq_len * hidden_size
+        features = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask)
 
         sequence_output = features["last_hidden_state"]
         sequence_output = self.dropout(sequence_output)
 
-        vis_embed_map = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048
-        converted_vis_embed_map = self.vismap2text(vis_embed_map)  # self.batch_size, 49, hidden_dim
+        vis_embed_map = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)
+        converted_vis_embed_map = self.vismap2text(vis_embed_map)
 
-        # apply txt2img attention mechanism to obtain image-based text representations
-        img_mask = added_attention_mask[:,:49]  # batch_size * 49
-        extended_img_mask = img_mask.unsqueeze(1).unsqueeze(2) # batch_size * 1 * 1 * 49
-        extended_img_mask = extended_img_mask.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
+        img_mask = added_attention_mask[:, :49]
+        extended_img_mask = img_mask.unsqueeze(1).unsqueeze(2)
+        extended_img_mask = extended_img_mask.to(dtype=next(self.parameters()).dtype)
         extended_img_mask = (1.0 - extended_img_mask) * -10000.0
 
         cross_encoder = self.txt2img_attention(sequence_output, converted_vis_embed_map, extended_img_mask)
-        cross_output_layer = cross_encoder[-1]  # self.batch_size * text_len * hidden_dim
+        cross_output_layer = cross_encoder[-1]
 
-        final_output = torch.cat((sequence_output, cross_output_layer), dim=-1) # batch_size * seq_len * 2(hidden_size)
-        bert_feats = self.classifier(final_output)  # batch_size * seq_len * 13
+        final_output = torch.cat((sequence_output, cross_output_layer), dim=-1)
+        logits = self.classifier(final_output)  # Now logits is a batch_size * seq_len * num_labels tensor
 
         if labels is not None:
-            main_loss = -self.crf(bert_feats, labels, mask=input_mask.byte(), reduction='mean')
-            return main_loss
+            loss_fct = torch.nn.CrossEntropyLoss()
+            # Only keep active parts of the loss
+            if input_mask is not None:
+                active_loss = input_mask.view(-1) == 1
+                active_logits = logits.view(-1, self.num_labels)[active_loss]
+                active_labels = labels.view(-1)[active_loss]
+                loss = loss_fct(active_logits, active_labels)
+            else:
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            return loss
         else:
-            pred_tags = self.crf.decode(bert_feats, mask=input_mask.byte())
+            # Apply softmax to logits to get pred_tags
+            pred_tags = torch.nn.functional.softmax(logits, dim=-1)
             return pred_tags
 
+
 if __name__ == "__main__":
-    model = RobertaCRFMultimodal.from_pretrained('vinai/phobert-base-v2')
+    model = RobertaSoftmaxMultimodal.from_pretrained('vinai/phobert-base-v2')
     print(model)
