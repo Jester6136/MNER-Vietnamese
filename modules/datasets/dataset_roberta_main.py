@@ -37,6 +37,7 @@ class SBInputFeatures(object):
         self.added_input_mask = added_input_mask
         self.segment_ids = segment_ids
         self.img_feat = img_feat
+        self.img_ti_feat= image_ti_feat
         self.label_id = label_id
         self.auxlabel_id = auxlabel_id
 
@@ -132,7 +133,8 @@ class MNERProcessor(DataProcessor):
 
     def get_labels(self):
 #         return [
-# "O","I-PRODUCT-AWARD",
+# "O",
+# "I-PRODUCT-AWARD",
 # "B-MISCELLANEOUS",
 # "B-QUANTITY-NUM",
 # "B-ORGANIZATION-SPORTS",
@@ -286,6 +288,7 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
 
     features = []
     count = 0
+    ti_crop_size=32
 
     transform = transforms.Compose([
             transforms.Resize([256, 256]),
@@ -295,6 +298,11 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
             transforms.Normalize((0.485, 0.456, 0.406),
                                 (0.229, 0.224, 0.225))])
 
+    transform_for_ti = transforms.Compose([
+            transforms.Resize([ti_crop_size, ti_crop_size]),  # 调整图片到指定的大小
+            transforms.ToTensor(),
+            transforms.Normalize((0.48, 0.498, 0.531),
+                                (0.214, 0.207, 0.207))])
 
     for (ex_index, example) in enumerate(examples):
         textlist = example.text_a.split(' ')
@@ -362,10 +370,12 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
                 print(image_path)
         try:
             image = image_process(image_path, transform)
+            image_ti_feat = image_process(image_path, transform_for_ti)
         except:
             count += 1
             image_path_fail = os.path.join(path_img, 'background.jpg')
             image = image_process(image_path_fail, transform)
+            image_ti_feat = image_process(image_path_fail, transform_for_ti)
 
         else:
             if ex_index < 2:
@@ -382,7 +392,7 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
 
             features.append(
                 SBInputFeatures(input_ids=input_ids, input_mask=input_mask, added_input_mask=added_input_mask,
-                                segment_ids=segment_ids, img_feat=image, label_id=label_ids, auxlabel_id=auxlabel_ids))
+                                segment_ids=segment_ids, img_feat=image, img_ti_feat=image_ti_feat, label_id=label_ids, auxlabel_id=auxlabel_ids))
 
     print('the number of problematic samples: ' + str(count))
     return features

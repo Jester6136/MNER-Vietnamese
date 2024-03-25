@@ -162,3 +162,4 @@ cython_debug/
 vlsp2021
 data/*
 cache/*
+resnet152.pth
