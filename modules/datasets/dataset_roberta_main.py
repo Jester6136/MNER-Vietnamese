@@ -31,13 +31,13 @@ class SBInputExample(object):
 class SBInputFeatures(object):
     """A single set of features of data"""
 
-    def __init__(self,input_ids,input_mask,added_input_mask,segment_ids,img_feat,label_id,auxlabel_id):
+    def __init__(self,input_ids,input_mask,added_input_mask,segment_ids,img_feat,img_ti_feat,label_id,auxlabel_id):
         self.input_ids = input_ids
         self.input_mask = input_mask
         self.added_input_mask = added_input_mask
         self.segment_ids = segment_ids
         self.img_feat = img_feat
-        self.img_ti_feat= image_ti_feat
+        self.img_ti_feat= img_ti_feat
         self.label_id = label_id
         self.auxlabel_id = auxlabel_id
 
@@ -222,7 +222,8 @@ class MNERProcessor(DataProcessor):
 
         # vlsp2016
         return [
-        "O","B-ORG",
+        "O",
+        "B-ORG",
         "B-MISC",
         "I-PER",
         "I-ORG",
@@ -387,6 +388,10 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
                 logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
                 logger.info(
                     "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+
+                logger.info(f"img_feat: {image.shape}")
+                logger.info(f"img_ti_feat: {image_ti_feat.shape}")
+
                 logger.info("label: %s" % " ".join([str(x) for x in label_ids]))
                 logger.info("auxlabel: %s" % " ".join([str(x) for x in auxlabel_ids]))
 

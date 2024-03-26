@@ -230,9 +230,9 @@ start_label_id = processor.get_start_label_id()
 stop_label_id = processor.get_stop_label_id()
 
 
-#''' initialization of our conversion matrix, in our implementation, it is a 7*12 matrix initialized as follows:
+
+trans_matrix = np.zeros((auxnum_labels,num_labels), dtype=float)
 if num_labels > 70:
-    trans_matrix = np.zeros((auxnum_labels,num_labels), dtype=float)
     trans_matrix[0,0]=1 # pad to pad
     trans_matrix[1,1]=1 # O to O
     trans_matrix[2,2]=0.25
@@ -323,7 +323,6 @@ if num_labels > 70:
     trans_matrix[5,87]=1   # [CLS] to [CLS]
     trans_matrix[6,88]=1   # [SEP] to [SEP]
 else:
-    trans_matrix = np.zeros((num_labels, auxnum_labels), dtype=float)
     trans_matrix[0,0]=1 # pad to pad
     trans_matrix[1,1]=1 # O to O
     trans_matrix[2,2]=0.25 # B to B-MISC
@@ -452,7 +451,7 @@ if args.do_train:
     all_added_input_mask = torch.tensor([f.added_input_mask for f in train_features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
     all_img_feats = torch.stack([f.img_feat for f in train_features])
-    all_image_ti_feat = torch.stack([f.image_ti_feat for f in train_features])
+    all_image_ti_feat = torch.stack([f.img_ti_feat for f in train_features])
     all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
     all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in train_features], dtype=torch.long)
     train_data = TensorDataset(all_input_ids, all_input_mask, all_added_input_mask, \
@@ -472,7 +471,7 @@ if args.do_train:
     all_added_input_mask = torch.tensor([f.added_input_mask for f in dev_eval_features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in dev_eval_features], dtype=torch.long)
     all_img_feats = torch.stack([f.img_feat for f in dev_eval_features])
-    all_image_ti_feat = torch.stack([f.image_ti_feat for f in dev_eval_features])
+    all_image_ti_feat = torch.stack([f.img_ti_feat for f in dev_eval_features])
     all_label_ids = torch.tensor([f.label_id for f in dev_eval_features], dtype=torch.long)
     all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in dev_eval_features], dtype=torch.long)
     dev_eval_data = TensorDataset(all_input_ids, all_input_mask, all_added_input_mask, all_segment_ids,
@@ -648,7 +647,7 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
     all_added_input_mask = torch.tensor([f.added_input_mask for f in eval_features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
     all_img_feats = torch.stack([f.img_feat for f in eval_features])
-    all_image_ti_feat = torch.stack([f.image_ti_feat for f in eval_features])
+    all_image_ti_feat = torch.stack([f.img_ti_feat for f in eval_features])
     all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
     all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in eval_features], dtype=torch.long)
 

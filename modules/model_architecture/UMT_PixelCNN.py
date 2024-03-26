@@ -38,7 +38,7 @@ from torch.autograd import Variable
 from torch.nn.utils import weight_norm as wn
 from torch.nn.parameter import Parameter
 logger = logging.getLogger(__name__)
-
+import numpy as np
 def gelu(x):
     """Implementation of the gelu activation function.
         For information: OpenAI GPT's gelu is slightly different (and gives slightly different results):
@@ -184,6 +184,42 @@ class down_right_shifted_deconv2d(nn.Module):
         x = x[:, :, :(xs[2] - self.filter_size[0] + 1):,
               :(xs[3] - self.filter_size[1] + 1)]
         return x
+
+def down_shift(x, pad=None):
+    # Pytorch ordering
+    xs = [int(y) for y in x.size()]
+    # when downshifting, the last row is removed
+    x = x[:, :, :xs[2] - 1, :]
+    # padding left, padding right, padding top, padding bottom
+    pad = nn.ZeroPad2d((0, 0, 1, 0)) if pad is None else pad
+    return pad(x)
+
+
+def right_shift(x, pad=None):
+    # Pytorch ordering
+    xs = [int(y) for y in x.size()]
+    # when righshifting, the last column is removed
+    x = x[:, :, :, :xs[3] - 1]
+    # padding left, padding right, padding top, padding bottom
+    pad = nn.ZeroPad2d((1, 0, 0, 0)) if pad is None else pad
+    return pad(x)
+
+def log_sum_exp(x):
+    """ numerically stable log_sum_exp implementation that prevents overflow """
+    # TF ordering
+    axis = len(x.size()) - 1
+    m, _ = torch.max(x, dim=axis)
+    m2, _ = torch.max(x, dim=axis, keepdim=True)
+    return m + torch.log(torch.sum(torch.exp(x - m2), dim=axis))
+
+
+def log_prob_from_logits(x):
+    """ numerically stable log_softmax implementation that prevents overflow """
+    # TF ordering
+    axis = len(x.size()) - 1
+    m, _ = torch.max(x, dim=axis, keepdim=True)
+    return x - m - torch.log(torch.sum(torch.exp(x - m), dim=axis, keepdim=True))
+
 
 class down_shifted_deconv2d(nn.Module):
     def __init__(self, num_filters_in, num_filters_out, filter_size=(2, 3), stride=(1, 1)):
@@ -426,7 +462,12 @@ class ImageDecoder(nn.Module):
             padding = Variable(torch.ones(
                 xs[0], 1, xs[2], xs[3]), requires_grad=False)
             self.init_padding = padding.cuda() if x.is_cuda else padding
-
+        else:
+            if(x.shape != self.init_padding.tolist()):
+                xs = [int(y) for y in x.size()]
+                padding = Variable(torch.ones(
+                    xs[0], 1, xs[2], xs[3]), requires_grad=False)
+                self.init_padding = padding.cuda() if x.is_cuda else padding
         if sample:
             xs = [int(y) for y in x.size()]
             padding = Variable(torch.ones(
@@ -435,6 +476,9 @@ class ImageDecoder(nn.Module):
             x = torch.cat((x, padding), 1)
 
         ###      UP PASS    ###
+        print(x.shape)
+        print(self.init_padding.shape)
+        print(sample)
         x = x if sample else torch.cat((x, self.init_padding), 1)
         u_list = [self.u_init(x)]
         ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
@@ -537,7 +581,8 @@ def discretized_mix_logistic_loss(x, l):
     log_probs = cond * log_cdf_plus + (1. - cond) * inner_out
     log_probs = torch.sum(log_probs, dim=3) + log_prob_from_logits(logit_probs)
 
-    return -torch.sum(log_sum_exp(log_probs))
+    return -torch.mean(log_sum_exp(log_probs))
+
 
 def LOSS_TI(real, fake): return discretized_mix_logistic_loss(real, fake)
 
@@ -555,7 +600,7 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         self.num_labels = num_labels_
         self.roberta = RobertaModel(config)
         #self.trans_matrix = torch.zeros(num_labels, auxnum_labels)
-        image_generate = ImageDecoder(nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
+        self.image_decoder = ImageDecoder(nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
                                  resnet_nonlinearity='concat_elu', input_channels=3)
         self.self_attention = RobertaSelfEncoder(config)
         self.self_attention_v2 = RobertaSelfEncoder(config)
@@ -564,6 +609,15 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         self.vismap2text = nn.Linear(2048, config.hidden_size)
         self.vismap2text_v2 = nn.Linear(2048, config.hidden_size)
         self.txt2img_attention = RobertaCrossEncoder(config, layer_num1)
+
+
+        
+        self.text_dense_cl = nn.Linear(config.hidden_size, config.hidden_size)
+        self.text_ouput_cl = nn.Linear(config.hidden_size, config.hidden_size)
+        self.relu = nn.ReLU()
+        self.image_dense_cl = nn.Linear(2048, config.hidden_size)
+        self.image_output_cl = nn.Linear(config.hidden_size, config.hidden_size)
+
         self.img2txt_attention = RobertaCrossEncoder(config, layer_num2)
         self.txt2txt_attention = RobertaCrossEncoder(config, layer_num3)
         self.gate = nn.Linear(config.hidden_size * 2, config.hidden_size)
@@ -576,10 +630,54 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
 
         self.init_weights()
 
+    def text_toimage_loss(self,text_h1, image_h1, temp):
+        batch_size = text_h1.shape[0]
+        loss = 0
+        for i in range(batch_size):
+            up = torch.exp(
+                (torch.matmul(text_h1[i], image_h1[i]) / (torch.norm(text_h1[i]) * torch.norm(image_h1[i]))) / temp
+            )
+
+            down = torch.sum(
+                torch.exp((torch.sum(text_h1[i] * image_h1, dim=-1) / (
+                            torch.norm(text_h1[i]) * torch.norm(image_h1, dim=1))) / temp), dim=-1)
+
+            loss += -torch.log(up / down)
+
+        return loss
+
+    def image_totext_loss(self,text_h1, image_h1, temp):
+        batch_size = text_h1.shape[0]
+        loss = 0
+        for i in range(batch_size):
+            up = torch.exp(
+                (
+                        torch.matmul(image_h1[i], text_h1[i]) / (torch.norm(image_h1[i]) * torch.norm(text_h1[i]))
+                ) / temp
+            )
+
+            down = torch.sum(
+                torch.exp((torch.sum(image_h1[i] * text_h1, dim=-1) / (
+                            torch.norm(image_h1[i]) * torch.norm(text_h1, dim=1))) / temp), dim=-1)
+
+            loss += -torch.log(up / down)
+
+        return loss
+
+    def total_loss(self,text_h1, image_h1, temp, temp_lamb):
+        # lamb = 0.5
+        lamb = temp_lamb
+        batch_size = text_h1.shape[0]
+        loss = (1 / batch_size) * (
+                    lamb * self.text_toimage_loss(text_h1, image_h1, temp) + (1 - lamb) * self.image_totext_loss(text_h1, image_h1, temp))
+        # print("total_loss:",loss)
+        return loss
+
     # this forward is just for predict, not for train
     # dont confuse this with _forward_alg above.
     def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_att, trans_matrix, 
                 image_decode=None, labels=None, auxlabels=None):
+
         # Get the emission scores from the BiLSTM
         features = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask)  # batch_size * seq_len * hidden_size
         sequence_output = features["last_hidden_state"]
@@ -650,15 +748,24 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         #bert_feats = F.log_softmax(bert_feats, dim=-1)
 
         if labels is not None:
-            beta = 0.5  # 73.87(73.50) 85.37(85.00) 0.5 5e-5 #73.45 85.05 1.0 1 1 1 4e-5 # 73.63 0.1 1 1 1 5e-5 # old 0.1 2 1 1 85.23 0.2 1 1 85.04
-            ##beta = 0.6
-            sigma = 0.0001
+            beta = 0.5
+            sigma = 0.03
+            alpha = 0.88
+            
+            # Loss 1
             aux_loss = - self.aux_crf(aux_bert_feats, auxlabels, mask=input_mask.byte(), reduction='mean')
+            # Loss 2
             main_loss = - self.crf(final_bert_feats, labels, mask=input_mask.byte(), reduction='mean')
+            # Loss 3
             image_generate = self.image_decoder(x=image_decode, h=pooler_output)
             loss_ti = LOSS_TI(image_decode, image_generate)
-            print(f"aux_loss: {aux_loss}, main_loss: {main_loss}, loss_ti: {loss_ti}")
-            loss = main_loss + beta*aux_loss + loss_ti*sigma
+            # Loss 4
+            text_output_cl = self.text_ouput_cl(self.relu(self.text_dense_cl(sequence_output_pooler)))
+            image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
+            cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
+
+            print(f"aux_loss: {aux_loss}, main_loss: {main_loss}, loss_ti: {loss_ti}, cl_loss: {cl_loss}")
+            loss = alpha * main_loss + (1 - alpha) * cl_loss + beta*aux_loss + loss_ti*sigma 
             return loss
         else:
             pred_tags = self.crf.decode(final_bert_feats, mask=input_mask.byte())
