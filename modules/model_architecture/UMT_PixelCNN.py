@@ -675,8 +675,8 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
 
     # this forward is just for predict, not for train
     # dont confuse this with _forward_alg above.
-    def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_att, trans_matrix, 
-                image_decode=None, labels=None, auxlabels=None):
+    def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_mean, visual_embeds_att, trans_matrix, 
+                image_decode=None,temp=None, temp_lamb=None, labels=None, auxlabels=None):
 
         # Get the emission scores from the BiLSTM
         features = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask)  # batch_size * seq_len * hidden_size
@@ -760,7 +760,7 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
             image_generate = self.image_decoder(x=image_decode, h=pooler_output)
             loss_ti = LOSS_TI(image_decode, image_generate)
             # Loss 4
-            text_output_cl = self.text_ouput_cl(self.relu(self.text_dense_cl(sequence_output_pooler)))
+            text_output_cl = self.text_ouput_cl(self.relu(self.text_dense_cl(pooler_output)))
             image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
             cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
 

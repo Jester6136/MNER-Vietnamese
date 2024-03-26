@@ -501,7 +501,7 @@ if args.do_train:
 
             trans_matrix = torch.tensor(trans_matrix).to(device)
             neg_log_likelihood = model(input_ids, segment_ids, input_mask, added_input_mask,
-                                        img_att, trans_matrix, image_ti_feat, label_ids, auxlabel_ids)
+                                        imgs_f, img_att, trans_matrix, image_ti_feat, temp, temp_lamb, label_ids, auxlabel_ids)
 
             if n_gpu > 1:
                 neg_log_likelihood = neg_log_likelihood.mean()  # mean() to average on multi-gpu.
@@ -556,7 +556,7 @@ if args.do_train:
 
             with torch.no_grad():
                 imgs_f, img_mean, img_att = encoder(img_feats)
-                predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, img_att, trans_matrix)
+                predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, imgs_f, img_att, trans_matrix, image_decode = None, temp = temp, temp_lamb = temp_lamb, labels=None, auxlabels=None)
 
             logits = predicted_label_seq_ids
             label_ids = label_ids.to('cpu').numpy()
@@ -679,7 +679,7 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
 
         with torch.no_grad():
             imgs_f, img_mean, img_att = encoder(img_feats)
-            predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, img_att,trans_matrix)
+            predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, imgs_f, img_att, trans_matrix, image_decode = None, temp = temp, temp_lamb = temp_lamb, labels=None, auxlabels=None)
 
         logits = predicted_label_seq_ids
         label_ids = label_ids.to('cpu').numpy()
