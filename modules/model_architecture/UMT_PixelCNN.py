@@ -476,9 +476,6 @@ class ImageDecoder(nn.Module):
             x = torch.cat((x, padding), 1)
 
         ###      UP PASS    ###
-        print(x.shape)
-        print(self.init_padding.shape)
-        print(sample)
         x = x if sample else torch.cat((x, self.init_padding), 1)
         u_list = [self.u_init(x)]
         ul_list = [self.ul_init[0](x) + self.ul_init[1](x)]
@@ -749,8 +746,8 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
 
         if labels is not None:
             beta = 0.5
-            sigma = 0.03
-            alpha = 0.88
+            sigma = 0.005
+            theta = 0.05
             
             # Loss 1
             aux_loss = - self.aux_crf(aux_bert_feats, auxlabels, mask=input_mask.byte(), reduction='mean')
@@ -765,7 +762,7 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
             cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
 
             print(f"aux_loss: {aux_loss}, main_loss: {main_loss}, loss_ti: {loss_ti}, cl_loss: {cl_loss}")
-            loss = alpha * main_loss + (1 - alpha) * cl_loss + beta*aux_loss + loss_ti*sigma 
+            loss = main_loss + theta * cl_loss + beta*aux_loss + loss_ti*sigma 
             return loss
         else:
             pred_tags = self.crf.decode(final_bert_feats, mask=input_mask.byte())

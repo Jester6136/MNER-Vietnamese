@@ -221,33 +221,33 @@ class MNERProcessor(DataProcessor):
         
 
         # vlsp2016
-        return [
-        "O",
-        "B-ORG",
-        "B-MISC",
-        "I-PER",
-        "I-ORG",
-        "B-LOC",
-        "I-MISC",
-        "I-LOC",
-        "B-PER",
-        "X",
-        "<s>",
-        "</s>"]
+        # return [
+        # "O",
+        # "B-ORG",
+        # "B-MISC",
+        # "I-PER",
+        # "I-ORG",
+        # "B-LOC",
+        # "I-MISC",
+        # "I-LOC",
+        # "B-PER",
+        # "X",
+        # "<s>",
+        # "</s>"]
 
         # vlsp2018
-        # return [
-        #         "O","I-ORGANIZATION",
-        #         "B-ORGANIZATION",
-        #         "I-LOCATION",
-        #         "B-MISCELLANEOUS",
-        #         "I-PERSON",
-        #         "B-PERSON",
-        #         "I-MISCELLANEOUS",
-        #         "B-LOCATION",
-        #         "X",
-        #         "<s>",
-        #         "</s>"]
+        return [
+                "O","I-ORGANIZATION",
+                "B-ORGANIZATION",
+                "I-LOCATION",
+                "B-MISCELLANEOUS",
+                "I-PERSON",
+                "B-PERSON",
+                "I-MISCELLANEOUS",
+                "B-LOCATION",
+                "X",
+                "<s>",
+                "</s>"]
 
     def get_auxlabels(self):
         return ["O", "B", "I", "X", "<s>", "</s>"]
@@ -389,8 +389,8 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
                 logger.info(
                     "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
 
-                logger.info(f"img_feat: {image.shape}")
-                logger.info(f"img_ti_feat: {image_ti_feat.shape}")
+                # logger.info(f"img_feat: {image.shape}")
+                # logger.info(f"img_ti_feat: {image_ti_feat.shape}")
 
                 logger.info("label: %s" % " ".join([str(x) for x in label_ids]))
                 logger.info("auxlabel: %s" % " ".join([str(x) for x in auxlabel_ids]))

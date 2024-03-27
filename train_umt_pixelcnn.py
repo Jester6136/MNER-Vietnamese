@@ -616,8 +616,8 @@ if args.do_train:
             best_dev_epoch = train_idx
 
     logger.info("**************************************************")
-    logger.info("The best epoch on the dev set: ", best_dev_epoch)
-    logger.info("The best Overall-F1 score on the dev set: ", max_dev_f1)
+    logger.info("The best epoch on the dev set: %s", best_dev_epoch)
+    logger.info("The best Overall-F1 score on the dev set: %s", max_dev_f1)
     logger.info('\n')
 
 # loadmodel
@@ -676,7 +676,7 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
         label_ids = label_ids.to(device)
         auxlabel_ids = auxlabel_ids.to(device)
 
-
+        trans_matrix = torch.tensor(trans_matrix).to(device)
         with torch.no_grad():
             imgs_f, img_mean, img_att = encoder(img_feats)
             predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, imgs_f, img_att, trans_matrix, image_decode = None, temp = temp, temp_lamb = temp_lamb, labels=None, auxlabels=None)
