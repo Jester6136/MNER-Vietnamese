@@ -159,15 +159,7 @@ class RobertaSoftmaxMultimodal(RobertaPreTrainedModel):
             return loss
         else:
             # Apply softmax to logits to get pred_tags
-            probs  = F.softmax(logits, dim=-1)
-            # Get the index of the maximum value along each row
-            _, indices = torch.max(probs, 1)
-
-            # Reshape the indices tensor to match the desired output format
-            indices = indices.unsqueeze(1)
-
-            # Convert indices tensor to a list of lists
-            pred_tags = indices.tolist()
+            pred_tags = torch.nn.functional.softmax(logits,dim=2)
             return pred_tags
 
 
