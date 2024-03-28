@@ -165,7 +165,7 @@ class RobertaSoftmaxGateMultimodal(RobertaPreTrainedModel):
             return loss
         else:
             # Apply softmax to logits to get pred_tags
-            pred_tags = F.softmax(logits, dim=-1)
+            pred_tags = torch.nn.functional.softmax(logits,dim=2)
             return pred_tags
 
 if __name__ == "__main__":

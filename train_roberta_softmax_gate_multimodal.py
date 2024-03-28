@@ -427,7 +427,7 @@ if args.do_train:
                 imgs_f, img_mean, img_att = encoder(img_feats)
                 predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask,imgs_f, img_att)
 
-            logits = predicted_label_seq_ids
+            logits = np.argmax(predicted_label_seq_ids.cpu().numpy(), axis=2).tolist()
             label_ids = label_ids.to('cpu').numpy()
             input_mask = input_mask.to('cpu').numpy()
             for i, mask in enumerate(input_mask):
@@ -544,7 +544,7 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
             imgs_f, img_mean, img_att = encoder(img_feats)
             predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask,imgs_f, img_att)
 
-        logits = predicted_label_seq_ids
+        logits = np.argmax(predicted_label_seq_ids.cpu().numpy(), axis=2).tolist()
         label_ids = label_ids.to('cpu').numpy()
         input_mask = input_mask.to('cpu').numpy()
         for i, mask in enumerate(input_mask):
