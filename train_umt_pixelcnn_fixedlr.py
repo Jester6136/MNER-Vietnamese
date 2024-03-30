@@ -400,7 +400,8 @@ no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
 optimizer_grouped_parameters = [
     {'params': [p for n, p in param_optimizer if not any(nd in n for nd in ['image_decoder']) and not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
     {'params': [p for n, p in param_optimizer if not any(nd in n for nd in ['image_decoder']) and any(nd in n for nd in no_decay)], 'weight_decay': 0.0},
-    {'lr' : args.learning_rate, 'params': [p for n, p in param_optimizer if any(nd in n for nd in ['image_decoder'])], 'weight_decay': 0.0}
+    {'lr' : 0.001, 'params': [p for n, p in param_optimizer if any(nd in n for nd in ['image_decoder'])], 'weight_decay': 0.00005}
+    # {'lr' : 0.01, 'params': [p for n, p in param_optimizer if any(nd in n for nd in ['image_decoder'])], 'weight_decay': 0.0005}
 ]
 
 if args.fp16:

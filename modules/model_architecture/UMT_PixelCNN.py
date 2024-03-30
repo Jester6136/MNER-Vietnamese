@@ -745,10 +745,14 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         #bert_feats = F.log_softmax(bert_feats, dim=-1)
 
         if labels is not None:
+            # # version fixed 1 - best vlsp2021
             beta = 0.5
-            sigma = 0.005
+            # sigma = 0.005
+            # sigma = 0.01
+            sigma = 0.05
             theta = 0.05
             
+
             # Loss 1
             aux_loss = - self.aux_crf(aux_bert_feats, auxlabels, mask=input_mask.byte(), reduction='mean')
             # Loss 2
