@@ -747,9 +747,7 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         if labels is not None:
             # # version fixed 1 - best vlsp2021
             beta = 0.5
-            # sigma = 0.005
-            # sigma = 0.01
-            sigma = 0.05
+            sigma = 0.005
             theta = 0.05
             
 
