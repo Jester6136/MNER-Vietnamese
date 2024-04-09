@@ -1,4 +1,4 @@
-# Multimodal BioNER Vietnamese
+# MNER Vietnamese
 
 ## Guide
 - [Requirements](#requirements)
