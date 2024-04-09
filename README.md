@@ -24,23 +24,42 @@ The dataset is structured in a specific format, and you can find sample data in 
 Run:
 
 ```bash
-python train_maf.py \
---do_train \
---do_eval \
---output_dir ./output_result \
---bert_model "vinai/phobert-base-v2" \
---lamb 0.62 \
---temp 0.179 \
---temp_lamb 0.7 \
---negative_rate 16 \
---learning_rate 3e-5 \
---data_dir sample_data \
---num_train_epochs 50 \
---train_batch_size 128 \
---path_image sample_data/ner_image \
---task_name sonba \
---resnet_root "modules/resnet" \
---cache_dir "cache" \
---max_seq_length 256
+task_name="sonba"
+alpha=0.5
+beta=0.5
+theta=0.07
+sigma=0.007
+lr_pixelcnn=0.0008
+weight_decay_pixelcnn=0.000001
+learning_rate=3e-5
+num_train_epochs=10
+train_batch_size=64
+path_image="vlsp_2016/ner_image"
+bert_model="vinai/phobert-base-v2"
+data_dir="vlsp_2016"
+resnet_root="modules/resnet"
+cache_dir="cache"
+max_seq_length=256
+
+python train_umt_pixelcnn_fixedlr.py \
+    --do_train \
+    --do_eval \
+    --output_dir ./output_result_${data_dir}_epoch${num_train_epochs}_${train_batch_size}_alpha${alpha}_beta${beta}_theta${theta}_sigma${sigma}_weight_decay_pixelcnn${weight_decay_pixelcnn}_lr_pixelcnn${lr_pixelcnn}_lr${learning_rate} \
+    --bert_model "${bert_model}" \
+    --alpha ${alpha} \
+    --beta ${beta} \
+    --sigma ${sigma} \
+    --theta ${theta} \
+    --weight_decay_pixelcnn ${weight_decay_pixelcnn} \
+    --lr_pixelcnn ${lr_pixelcnn} \
+    --learning_rate ${learning_rate} \
+    --data_dir "${data_dir}" \
+    --num_train_epochs ${num_train_epochs} \
+    --train_batch_size ${train_batch_size} \
+    --path_image "${path_image}" \
+    --task_name "${task_name}" \
+    --resnet_root "${resnet_root}" \
+    --cache_dir "${cache_dir}" \
+    --max_seq_length ${max_seq_length}
 ```
 

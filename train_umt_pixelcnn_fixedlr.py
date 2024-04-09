@@ -30,10 +30,38 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message
 logger = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
 ## Required parameters
-parser.add_argument("--negative_rate",
-                    default=16,
-                    type=int,
-                    help="the negative samples rate")
+parser.add_argument("--alpha",
+                    default=0.5,
+                    type=float,
+                    help="parameter for Conversion Matrix")
+
+parser.add_argument("--beta",
+                    default=0.5,
+                    type=float,
+                    help="parameter for aux loss")
+
+
+parser.add_argument("--sigma",
+                    default=0.005,
+                    type=float,
+                    help="parameter for PixelCNN loss")
+
+
+parser.add_argument("--theta",
+                    default=0.05,
+                    type=float,
+                    help="parameter for CL loss")
+
+
+parser.add_argument("--weight_decay_pixelcnn",
+                    default=0.0,
+                    type=float,
+                    help="weight_decay for PixelCNN++")
+
+parser.add_argument("--lr_pixelcnn",
+                    default=0.001,
+                    type=float,
+                    help="The initial learning rate for PixelCNN++")
 
 parser.add_argument('--lamb',
                     default=0.62,
@@ -397,11 +425,13 @@ elif n_gpu > 1:
 
 param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+
+weight_decay_pixelcnn = args.weight_decay_pixelcnn
 optimizer_grouped_parameters = [
     {'params': [p for n, p in param_optimizer if not any(nd in n for nd in ['image_decoder']) and not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
     {'params': [p for n, p in param_optimizer if not any(nd in n for nd in ['image_decoder']) and any(nd in n for nd in no_decay)], 'weight_decay': 0.0},
     # {'lr' : 0.001, 'params': [p for n, p in param_optimizer if any(nd in n for nd in ['image_decoder'])], 'weight_decay': 0.00005}
-    {'lr' : 0.001, 'params': [p for n, p in param_optimizer if any(nd in n for nd in ['image_decoder'])], 'weight_decay': 0.0}
+    {'lr' : 0.001, 'params': [p for n, p in param_optimizer if any(nd in n for nd in ['image_decoder'])], 'weight_decay': weight_decay_pixelcnn}
 ]
 
 if args.fp16:
@@ -439,7 +469,10 @@ output_encoder_file = os.path.join(args.output_dir, "pytorch_encoder.bin")
 temp = args.temp
 temp_lamb = args.temp_lamb
 lamb = args.lamb
-negative_rate = args.negative_rate
+alpha = args.alpha
+beta = args.beta
+theta = args.theta
+sigma = args.sigma
 
 
 if args.do_train:
@@ -500,7 +533,7 @@ if args.do_train:
 
             trans_matrix = torch.tensor(trans_matrix).to(device)
             neg_log_likelihood = model(input_ids, segment_ids, input_mask, added_input_mask,
-                                        imgs_f, img_att, trans_matrix, image_ti_feat, temp, temp_lamb, label_ids, auxlabel_ids)
+                                        imgs_f, img_att, trans_matrix, image_ti_feat, alpha, beta, theta, sigma, temp, temp_lamb, label_ids, auxlabel_ids)
 
             if n_gpu > 1:
                 neg_log_likelihood = neg_log_likelihood.mean()  # mean() to average on multi-gpu.
@@ -552,10 +585,10 @@ if args.do_train:
             img_feats = img_feats.to(device)
             label_ids = label_ids.to(device)
             auxlabel_ids = auxlabel_ids.to(device)
-
+            image_decode = None
             with torch.no_grad():
                 imgs_f, img_mean, img_att = encoder(img_feats)
-                predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, imgs_f, img_att, trans_matrix, image_decode = None, temp = temp, temp_lamb = temp_lamb, labels=None, auxlabels=None)
+                predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, imgs_f, img_att, trans_matrix, image_decode, alpha, beta, theta, sigma, temp = temp, temp_lamb = temp_lamb, labels=None, auxlabels=None)
 
             logits = predicted_label_seq_ids
             label_ids = label_ids.to('cpu').numpy()
@@ -607,7 +640,7 @@ if args.do_train:
             with open(output_config_file, 'w') as f:
                 f.write(model_to_save.config.to_json_string())
             label_map = {i: label for i, label in enumerate(label_list, 1)}
-            model_config = {"bert_model": args.bert_model, "do_lower": args.do_lower_case,
+            model_config = {"bert_model": args.bert_model,"best_epoch": best_dev_epoch,"max_f1": max_dev_f1, "do_lower": args.do_lower_case,
                             "max_seq_length": args.max_seq_length, "num_labels": len(label_list) + 1,
                             "label_map": label_map}
             json.dump(model_config, open(os.path.join(args.output_dir, "model_config.json"), "w"))
@@ -675,10 +708,11 @@ if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0)
         label_ids = label_ids.to(device)
         auxlabel_ids = auxlabel_ids.to(device)
 
+        image_decode = None
         trans_matrix = torch.tensor(trans_matrix).to(device)
         with torch.no_grad():
             imgs_f, img_mean, img_att = encoder(img_feats)
-            predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, imgs_f, img_att, trans_matrix, image_decode = None, temp = temp, temp_lamb = temp_lamb, labels=None, auxlabels=None)
+            predicted_label_seq_ids = model(input_ids, segment_ids, input_mask, added_input_mask, imgs_f, img_att, trans_matrix, image_decode, alpha, beta, theta, sigma, temp = temp, temp_lamb = temp_lamb, labels=None, auxlabels=None)
 
         logits = predicted_label_seq_ids
         label_ids = label_ids.to('cpu').numpy()

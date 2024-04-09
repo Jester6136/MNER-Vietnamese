@@ -235,31 +235,6 @@ class down_shifted_deconv2d(nn.Module):
         return x[:, :, :(xs[2] - self.filter_size[0] + 1),
                  int((self.filter_size[1] - 1) / 2):(xs[3] - int((self.filter_size[1] - 1) / 2))]
 
-class PixelCNNLayer_up(nn.Module):
-    def __init__(self, nr_resnet, nr_filters, resnet_nonlinearity):
-        super(PixelCNNLayer_up, self).__init__()
-        self.nr_resnet = nr_resnet
-        # stream from pixels above
-        self.u_stream = nn.ModuleList([gated_resnet(nr_filters, down_shifted_conv2d,
-                                                    resnet_nonlinearity, skip_connection=0)
-                                       for _ in range(nr_resnet)])
-
-        # stream from pixels above and to thes left
-        self.ul_stream = nn.ModuleList([gated_resnet(nr_filters, down_right_shifted_conv2d,
-                                        resnet_nonlinearity, skip_connection=1)
-                                        for _ in range(nr_resnet)])
-
-    def forward(self, u, ul, h=None):
-        u_list, ul_list = [], []
-
-        for i in range(self.nr_resnet):
-            u = self.u_stream[i](u, a=None, h=h)
-            ul = self.ul_stream[i](ul, a=u, h=h)
-            u_list += [u]
-            ul_list += [ul]
-
-        return u_list, ul_list
-
 class nin(nn.Module):
     def __init__(self, dim_in, dim_out):
         super(nin, self).__init__()
@@ -408,6 +383,32 @@ class PixelCNNLayer_down(nn.Module):
 
         return u, ul
 
+
+class PixelCNNLayer_up(nn.Module):
+    def __init__(self, nr_resnet, nr_filters, resnet_nonlinearity):
+        super(PixelCNNLayer_up, self).__init__()
+        self.nr_resnet = nr_resnet
+        # stream from pixels above
+        self.u_stream = nn.ModuleList([gated_resnet(nr_filters, down_shifted_conv2d,
+                                                    resnet_nonlinearity, skip_connection=0)
+                                       for _ in range(nr_resnet)])
+
+        # stream from pixels above and to thes left
+        self.ul_stream = nn.ModuleList([gated_resnet(nr_filters, down_right_shifted_conv2d,
+                                        resnet_nonlinearity, skip_connection=1)
+                                        for _ in range(nr_resnet)])
+
+    def forward(self, u, ul, h=None):
+        u_list, ul_list = [], []
+
+        for i in range(self.nr_resnet):
+            u = self.u_stream[i](u, a=None, h=h)
+            ul = self.ul_stream[i](ul, a=u, h=h)
+            u_list += [u]
+            ul_list += [ul]
+
+        return u_list, ul_list
+
 class ImageDecoder(nn.Module):
     def __init__(self, nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
                  resnet_nonlinearity='concat_elu', input_channels=3):
@@ -456,7 +457,6 @@ class ImageDecoder(nn.Module):
         self.init_padding = None
 
     def forward(self, x, h=None, sample=False):
-        # similar as done in the tf repo :
         if self.init_padding is None and not sample:
             xs = [int(y) for y in x.size()]
             padding = Variable(torch.ones(
@@ -673,7 +673,7 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
     # this forward is just for predict, not for train
     # dont confuse this with _forward_alg above.
     def forward(self, input_ids, segment_ids, input_mask, added_attention_mask, visual_embeds_mean, visual_embeds_att, trans_matrix, 
-                image_decode=None,temp=None, temp_lamb=None, labels=None, auxlabels=None):
+                image_decode=None, alpha=None, beta=None, theta=None, sigma=None, temp=None, temp_lamb=None, labels=None, auxlabels=None):
 
         # Get the emission scores from the BiLSTM
         features = self.roberta(input_ids, token_type_ids=segment_ids, attention_mask=input_mask)  # batch_size * seq_len * hidden_size
@@ -738,18 +738,13 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         ###### addon_sequence_output = self.self_attention(final_output, extended_txt_mask)
         bert_feats = self.classifier(final_output)
 
-        alpha = 0.5
+
         final_bert_feats = torch.add(torch.mul(bert_feats, alpha),torch.mul(trans_bert_feats, 1-alpha))
 
         # suggested by Hongjie
         #bert_feats = F.log_softmax(bert_feats, dim=-1)
 
         if labels is not None:
-            # # version fixed 1 - best vlsp2021
-            beta = 0.5
-            sigma = 0.005
-            theta = 0.05
-            
 
             # Loss 1
             aux_loss = - self.aux_crf(aux_bert_feats, auxlabels, mask=input_mask.byte(), reduction='mean')
@@ -763,7 +758,7 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
             image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
             cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
 
-            print(f"aux_loss: {aux_loss}, main_loss: {main_loss}, loss_ti: {loss_ti}, cl_loss: {cl_loss}")
+            # print(f"aux_loss: {aux_loss}, main_loss: {main_loss}, loss_ti: {loss_ti}, cl_loss: {cl_loss}")
             loss = main_loss + theta * cl_loss + beta*aux_loss + loss_ti*sigma 
             return loss
         else:
