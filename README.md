@@ -27,21 +27,21 @@ Run:
 task_name="sonba"
 alpha=0.5
 beta=0.5
-theta=0.07
-sigma=0.007
-lr_pixelcnn=0.0008
-weight_decay_pixelcnn=0.000001
+theta=0.05
+sigma=0.005
+lr_pixelcnn=0.001
+weight_decay_pixelcnn=0.00005
 learning_rate=3e-5
 num_train_epochs=10
 train_batch_size=64
-path_image="vlsp_2016/ner_image"
-bert_model="vinai/phobert-base-v2"
-data_dir="vlsp_2016"
+path_image="twitter2017/ner_image"
+bert_model="google-bert/bert-base-cased"
+data_dir="twitter2017"
 resnet_root="modules/resnet"
 cache_dir="cache"
 max_seq_length=256
 
-python train_umt_pixelcnn_fixedlr.py \
+python bert_train_umt_pixelcnn_fixedlr.py \
     --do_train \
     --do_eval \
     --output_dir ./output_result_${data_dir}_epoch${num_train_epochs}_${train_batch_size}_alpha${alpha}_beta${beta}_theta${theta}_sigma${sigma}_weight_decay_pixelcnn${weight_decay_pixelcnn}_lr_pixelcnn${lr_pixelcnn}_lr${learning_rate} \
