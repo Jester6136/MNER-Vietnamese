@@ -76,7 +76,7 @@ def sbreadfile(filename):
         splits = line.split('\t')
         
         if splits[0] == '' or splits[0].isspace() or splits[0] in SPECIAL_TOKENS or splits[0].startswith(URL_PREFIX):
-            splits[0] = "<unk>"
+            splits[0] = "[UNK]"
         
         sentence.append(splits[0])
         cur_label = splits[-1][:-1]
@@ -139,26 +139,26 @@ class MNERProcessor(DataProcessor):
 
     def get_labels(self):
         # vlsp2021
-        # return ["O","I-PRODUCT-AWARD","B-MISCELLANEOUS","B-QUANTITY-NUM","B-ORGANIZATION-SPORTS","B-DATETIME","I-ADDRESS","I-PERSON","I-EVENT-SPORT","B-ADDRESS","B-EVENT-NATURAL","I-LOCATION-GPE","B-EVENT-GAMESHOW","B-DATETIME-TIMERANGE","I-QUANTITY-NUM","I-QUANTITY-AGE","B-EVENT-CUL","I-QUANTITY-TEM","I-PRODUCT-LEGAL","I-LOCATION-STRUC","I-ORGANIZATION","B-PHONENUMBER","B-IP","B-QUANTITY-AGE","I-DATETIME-TIME","I-DATETIME","B-ORGANIZATION-MED","B-DATETIME-SET","I-EVENT-CUL","B-QUANTITY-DIM","I-QUANTITY-DIM","B-EVENT","B-DATETIME-DATERANGE","I-EVENT-GAMESHOW","B-PRODUCT-AWARD","B-LOCATION-STRUC","B-LOCATION","B-PRODUCT","I-MISCELLANEOUS","B-SKILL","I-QUANTITY-ORD","I-ORGANIZATION-STOCK","I-LOCATION-GEO","B-PERSON","B-PRODUCT-COM","B-PRODUCT-LEGAL","I-LOCATION","B-QUANTITY-TEM","I-PRODUCT","B-QUANTITY-CUR","I-QUANTITY-CUR","B-LOCATION-GPE","I-PHONENUMBER","I-ORGANIZATION-MED","I-EVENT-NATURAL","I-EMAIL","B-ORGANIZATION","B-URL","I-DATETIME-TIMERANGE","I-QUANTITY","I-IP","B-EVENT-SPORT","B-PERSONTYPE","B-QUANTITY-PER","I-QUANTITY-PER","I-PRODUCT-COM","I-DATETIME-DURATION","B-LOCATION-GPE-GEO","B-QUANTITY-ORD","I-EVENT","B-DATETIME-TIME","B-QUANTITY","I-DATETIME-SET","I-LOCATION-GPE-GEO","B-ORGANIZATION-STOCK","I-ORGANIZATION-SPORTS","I-SKILL","I-URL","B-DATETIME-DURATION","I-DATETIME-DATE","I-PERSONTYPE","B-DATETIME-DATE","I-DATETIME-DATERANGE","B-LOCATION-GEO","B-EMAIL","X","<s>", "</s>"]
+        # return ["O","I-PRODUCT-AWARD","B-MISCELLANEOUS","B-QUANTITY-NUM","B-ORGANIZATION-SPORTS","B-DATETIME","I-ADDRESS","I-PERSON","I-EVENT-SPORT","B-ADDRESS","B-EVENT-NATURAL","I-LOCATION-GPE","B-EVENT-GAMESHOW","B-DATETIME-TIMERANGE","I-QUANTITY-NUM","I-QUANTITY-AGE","B-EVENT-CUL","I-QUANTITY-TEM","I-PRODUCT-LEGAL","I-LOCATION-STRUC","I-ORGANIZATION","B-PHONENUMBER","B-IP","B-QUANTITY-AGE","I-DATETIME-TIME","I-DATETIME","B-ORGANIZATION-MED","B-DATETIME-SET","I-EVENT-CUL","B-QUANTITY-DIM","I-QUANTITY-DIM","B-EVENT","B-DATETIME-DATERANGE","I-EVENT-GAMESHOW","B-PRODUCT-AWARD","B-LOCATION-STRUC","B-LOCATION","B-PRODUCT","I-MISCELLANEOUS","B-SKILL","I-QUANTITY-ORD","I-ORGANIZATION-STOCK","I-LOCATION-GEO","B-PERSON","B-PRODUCT-COM","B-PRODUCT-LEGAL","I-LOCATION","B-QUANTITY-TEM","I-PRODUCT","B-QUANTITY-CUR","I-QUANTITY-CUR","B-LOCATION-GPE","I-PHONENUMBER","I-ORGANIZATION-MED","I-EVENT-NATURAL","I-EMAIL","B-ORGANIZATION","B-URL","I-DATETIME-TIMERANGE","I-QUANTITY","I-IP","B-EVENT-SPORT","B-PERSONTYPE","B-QUANTITY-PER","I-QUANTITY-PER","I-PRODUCT-COM","I-DATETIME-DURATION","B-LOCATION-GPE-GEO","B-QUANTITY-ORD","I-EVENT","B-DATETIME-TIME","B-QUANTITY","I-DATETIME-SET","I-LOCATION-GPE-GEO","B-ORGANIZATION-STOCK","I-ORGANIZATION-SPORTS","I-SKILL","I-URL","B-DATETIME-DURATION","I-DATETIME-DATE","I-PERSONTYPE","B-DATETIME-DATE","I-DATETIME-DATERANGE","B-LOCATION-GEO","B-EMAIL","X","[CLS]", "[SEP]"]
         
         # vlsp2016
-        return ["O","B-ORG","B-MISC","I-PER","I-ORG","B-LOC","I-MISC","I-LOC","B-PER","X","<s>","</s>"]
+        return ["O","B-ORG","B-MISC","I-PER","I-ORG","B-LOC","I-MISC","I-LOC","B-PER","X","[CLS]","[SEP]"]
 
         # vlsp2018
-        # return ["O","I-ORGANIZATION","B-ORGANIZATION","I-LOCATION","B-MISCELLANEOUS","I-PERSON","B-PERSON","I-MISCELLANEOUS","B-LOCATION","X","<s>","</s>"]
+        # return ["O","I-ORGANIZATION","B-ORGANIZATION","I-LOCATION","B-MISCELLANEOUS","I-PERSON","B-PERSON","I-MISCELLANEOUS","B-LOCATION","X","[CLS]","[SEP]"]
 
     def get_auxlabels(self):
-        return ["O", "B", "I", "X", "<s>", "</s>"]
+        return ["O", "B", "I", "X", "[CLS]", "[SEP]"]
 
     def get_start_label_id(self):
         label_list = self.get_labels()
         label_map = {label: i for i, label in enumerate(label_list, 1)}
-        return label_map['<s>']
+        return label_map['[CLS]']
 
     def get_stop_label_id(self):
         label_list = self.get_labels()
         label_map = {label: i for i, label in enumerate(label_list, 1)}
-        return label_map['</s>']
+        return label_map['[SEP]']
 
     def _create_examples(self, lines, imgs, auxlabels, set_type):
         examples = []
@@ -230,19 +230,19 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
         segment_ids = []
         label_ids = []
         auxlabel_ids = []
-        ntokens.append("<s>")
+        ntokens.append("[CLS]")
         segment_ids.append(0)
-        label_ids.append(label_map["<s>"])
-        auxlabel_ids.append(auxlabel_map["<s>"])
+        label_ids.append(label_map["[CLS]"])
+        auxlabel_ids.append(auxlabel_map["[CLS]"])
         for i, token in enumerate(tokens):
             ntokens.append(token)
             segment_ids.append(0)
             label_ids.append(label_map[labels[i]])
             auxlabel_ids.append(auxlabel_map[auxlabels[i]])
-        ntokens.append("</s>")
+        ntokens.append("[SEP]")
         segment_ids.append(0)
-        label_ids.append(label_map["</s>"])
-        auxlabel_ids.append(auxlabel_map["</s>"])
+        label_ids.append(label_map["[SEP]"])
+        auxlabel_ids.append(auxlabel_map["[SEP]"])
         input_ids = tokenizer.convert_tokens_to_ids(ntokens)
         input_mask = [1] * len(input_ids)
         added_input_mask = [1] * (len(input_ids) + 49)  # 1 or 49 is for encoding regional image representations

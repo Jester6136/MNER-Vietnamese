@@ -163,3 +163,5 @@ vlsp2021
 data/*
 cache/*
 resnet152.pth
+train_bert_model
+models

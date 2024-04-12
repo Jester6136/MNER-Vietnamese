@@ -6,6 +6,7 @@ from torchvision import transforms
 from PIL import Image
 SPECIAL_TOKENS = ['\ufe0f', '\u200d', '\u200b', '\x92']
 URL_PREFIX = 'http'
+
 class SBInputExample(object):
     """A single training/test example for simple sequence classification."""
     def __init__(self,guid,text_a,text_b,img_id,label=None,auxlabel=None):
@@ -32,13 +33,12 @@ class SBInputExample(object):
 class SBInputFeatures(object):
     """A single set of features of data"""
 
-    def __init__(self,input_ids,input_mask,added_input_mask,segment_ids,img_feat,img_ti_feat,label_id,auxlabel_id):
+    def __init__(self,input_ids,input_mask,added_input_mask,segment_ids,img_feat,label_id,auxlabel_id):
         self.input_ids = input_ids
         self.input_mask = input_mask
         self.added_input_mask = added_input_mask
         self.segment_ids = segment_ids
         self.img_feat = img_feat
-        self.img_ti_feat= img_ti_feat
         self.label_id = label_id
         self.auxlabel_id = auxlabel_id
 
@@ -76,7 +76,7 @@ def sbreadfile(filename):
         splits = line.split('\t')
         
         if splits[0] == '' or splits[0].isspace() or splits[0] in SPECIAL_TOKENS or splits[0].startswith(URL_PREFIX):
-            splits[0] = "<unk>"
+            splits[0] = "[UNK]"
         
         sentence.append(splits[0])
         cur_label = splits[-1][:-1]
@@ -98,6 +98,7 @@ def sbreadfile(filename):
     print("The number of samples: " + str(len(data)))
     print("The number of images: " + str(len(imgs)))
     return data, imgs, auxlabels
+
 
 class DataProcessor(object):
     """Base class for data converters for sequence classification data sets."""
@@ -139,26 +140,26 @@ class MNERProcessor(DataProcessor):
 
     def get_labels(self):
         # vlsp2021
-        # return ["O","I-PRODUCT-AWARD","B-MISCELLANEOUS","B-QUANTITY-NUM","B-ORGANIZATION-SPORTS","B-DATETIME","I-ADDRESS","I-PERSON","I-EVENT-SPORT","B-ADDRESS","B-EVENT-NATURAL","I-LOCATION-GPE","B-EVENT-GAMESHOW","B-DATETIME-TIMERANGE","I-QUANTITY-NUM","I-QUANTITY-AGE","B-EVENT-CUL","I-QUANTITY-TEM","I-PRODUCT-LEGAL","I-LOCATION-STRUC","I-ORGANIZATION","B-PHONENUMBER","B-IP","B-QUANTITY-AGE","I-DATETIME-TIME","I-DATETIME","B-ORGANIZATION-MED","B-DATETIME-SET","I-EVENT-CUL","B-QUANTITY-DIM","I-QUANTITY-DIM","B-EVENT","B-DATETIME-DATERANGE","I-EVENT-GAMESHOW","B-PRODUCT-AWARD","B-LOCATION-STRUC","B-LOCATION","B-PRODUCT","I-MISCELLANEOUS","B-SKILL","I-QUANTITY-ORD","I-ORGANIZATION-STOCK","I-LOCATION-GEO","B-PERSON","B-PRODUCT-COM","B-PRODUCT-LEGAL","I-LOCATION","B-QUANTITY-TEM","I-PRODUCT","B-QUANTITY-CUR","I-QUANTITY-CUR","B-LOCATION-GPE","I-PHONENUMBER","I-ORGANIZATION-MED","I-EVENT-NATURAL","I-EMAIL","B-ORGANIZATION","B-URL","I-DATETIME-TIMERANGE","I-QUANTITY","I-IP","B-EVENT-SPORT","B-PERSONTYPE","B-QUANTITY-PER","I-QUANTITY-PER","I-PRODUCT-COM","I-DATETIME-DURATION","B-LOCATION-GPE-GEO","B-QUANTITY-ORD","I-EVENT","B-DATETIME-TIME","B-QUANTITY","I-DATETIME-SET","I-LOCATION-GPE-GEO","B-ORGANIZATION-STOCK","I-ORGANIZATION-SPORTS","I-SKILL","I-URL","B-DATETIME-DURATION","I-DATETIME-DATE","I-PERSONTYPE","B-DATETIME-DATE","I-DATETIME-DATERANGE","B-LOCATION-GEO","B-EMAIL","X","<s>", "</s>"]
+        # return ["O","I-PRODUCT-AWARD","B-MISCELLANEOUS","B-QUANTITY-NUM","B-ORGANIZATION-SPORTS","B-DATETIME","I-ADDRESS","I-PERSON","I-EVENT-SPORT","B-ADDRESS","B-EVENT-NATURAL","I-LOCATION-GPE","B-EVENT-GAMESHOW","B-DATETIME-TIMERANGE","I-QUANTITY-NUM","I-QUANTITY-AGE","B-EVENT-CUL","I-QUANTITY-TEM","I-PRODUCT-LEGAL","I-LOCATION-STRUC","I-ORGANIZATION","B-PHONENUMBER","B-IP","B-QUANTITY-AGE","I-DATETIME-TIME","I-DATETIME","B-ORGANIZATION-MED","B-DATETIME-SET","I-EVENT-CUL","B-QUANTITY-DIM","I-QUANTITY-DIM","B-EVENT","B-DATETIME-DATERANGE","I-EVENT-GAMESHOW","B-PRODUCT-AWARD","B-LOCATION-STRUC","B-LOCATION","B-PRODUCT","I-MISCELLANEOUS","B-SKILL","I-QUANTITY-ORD","I-ORGANIZATION-STOCK","I-LOCATION-GEO","B-PERSON","B-PRODUCT-COM","B-PRODUCT-LEGAL","I-LOCATION","B-QUANTITY-TEM","I-PRODUCT","B-QUANTITY-CUR","I-QUANTITY-CUR","B-LOCATION-GPE","I-PHONENUMBER","I-ORGANIZATION-MED","I-EVENT-NATURAL","I-EMAIL","B-ORGANIZATION","B-URL","I-DATETIME-TIMERANGE","I-QUANTITY","I-IP","B-EVENT-SPORT","B-PERSONTYPE","B-QUANTITY-PER","I-QUANTITY-PER","I-PRODUCT-COM","I-DATETIME-DURATION","B-LOCATION-GPE-GEO","B-QUANTITY-ORD","I-EVENT","B-DATETIME-TIME","B-QUANTITY","I-DATETIME-SET","I-LOCATION-GPE-GEO","B-ORGANIZATION-STOCK","I-ORGANIZATION-SPORTS","I-SKILL","I-URL","B-DATETIME-DURATION","I-DATETIME-DATE","I-PERSONTYPE","B-DATETIME-DATE","I-DATETIME-DATERANGE","B-LOCATION-GEO","B-EMAIL","X","[CLS]", "[SEP]"]
         
         # vlsp2016
-        return ["O","B-ORG","B-MISC","I-PER","I-ORG","B-LOC","I-MISC","I-LOC","B-PER","X","<s>","</s>"]
+        return ["B-ORG","B-MISC","I-PER","I-ORG","B-LOC","I-MISC","I-LOC","O","B-PER","X","[CLS]","[SEP]"]
 
         # vlsp2018
-        # return ["O","I-ORGANIZATION","B-ORGANIZATION","I-LOCATION","B-MISCELLANEOUS","I-PERSON","B-PERSON","I-MISCELLANEOUS","B-LOCATION","X","<s>","</s>"]
+        # return ["I-ORGANIZATION","B-ORGANIZATION","I-LOCATION","B-MISCELLANEOUS","I-PERSON","B-PERSON","O","I-MISCELLANEOUS","B-LOCATION","X","[CLS]","[SEP]"]
 
     def get_auxlabels(self):
-        return ["O", "B", "I", "X", "<s>", "</s>"]
+        return ["O", "B", "I", "X", "[CLS]", "[SEP]"]
 
     def get_start_label_id(self):
         label_list = self.get_labels()
         label_map = {label: i for i, label in enumerate(label_list, 1)}
-        return label_map['<s>']
+        return label_map['[CLS]']
 
     def get_stop_label_id(self):
         label_list = self.get_labels()
         label_map = {label: i for i, label in enumerate(label_list, 1)}
-        return label_map['</s>']
+        return label_map['[SEP]']
 
     def _create_examples(self, lines, imgs, auxlabels, set_type):
         examples = []
@@ -187,7 +188,6 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
 
     features = []
     count = 0
-    ti_crop_size=32
 
     transform = transforms.Compose([
             transforms.Resize([256, 256]),
@@ -197,11 +197,6 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
             transforms.Normalize((0.485, 0.456, 0.406),
                                 (0.229, 0.224, 0.225))])
 
-    transform_for_ti = transforms.Compose([
-            transforms.Resize([ti_crop_size, ti_crop_size]),  # 调整图片到指定的大小
-            transforms.ToTensor(),
-            transforms.Normalize((0.48, 0.498, 0.531),
-                                (0.214, 0.207, 0.207))])
 
     for (ex_index, example) in enumerate(examples):
         textlist = example.text_a.split(' ')
@@ -230,19 +225,19 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
         segment_ids = []
         label_ids = []
         auxlabel_ids = []
-        ntokens.append("<s>")
+        ntokens.append("[CLS]")
         segment_ids.append(0)
-        label_ids.append(label_map["<s>"])
-        auxlabel_ids.append(auxlabel_map["<s>"])
+        label_ids.append(label_map["[CLS]"])
+        auxlabel_ids.append(auxlabel_map["[CLS]"])
         for i, token in enumerate(tokens):
             ntokens.append(token)
             segment_ids.append(0)
             label_ids.append(label_map[labels[i]])
             auxlabel_ids.append(auxlabel_map[auxlabels[i]])
-        ntokens.append("</s>")
+        ntokens.append("[SEP]")
         segment_ids.append(0)
-        label_ids.append(label_map["</s>"])
-        auxlabel_ids.append(auxlabel_map["</s>"])
+        label_ids.append(label_map["[SEP]"])
+        auxlabel_ids.append(auxlabel_map["[SEP]"])
         input_ids = tokenizer.convert_tokens_to_ids(ntokens)
         input_mask = [1] * len(input_ids)
         added_input_mask = [1] * (len(input_ids) + 49)  # 1 or 49 is for encoding regional image representations
@@ -269,12 +264,10 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
                 print(image_path)
         try:
             image = image_process(image_path, transform)
-            image_ti_feat = image_process(image_path, transform_for_ti)
         except:
             count += 1
             image_path_fail = os.path.join(path_img, 'background.jpg')
             image = image_process(image_path_fail, transform)
-            image_ti_feat = image_process(image_path_fail, transform_for_ti)
 
         else:
             if ex_index < 2:
@@ -286,16 +279,12 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
                 logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
                 logger.info(
                     "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-
-                # logger.info(f"img_feat: {image.shape}")
-                # logger.info(f"img_ti_feat: {image_ti_feat.shape}")
-
                 logger.info("label: %s" % " ".join([str(x) for x in label_ids]))
                 logger.info("auxlabel: %s" % " ".join([str(x) for x in auxlabel_ids]))
 
             features.append(
                 SBInputFeatures(input_ids=input_ids, input_mask=input_mask, added_input_mask=added_input_mask,
-                                segment_ids=segment_ids, img_feat=image, img_ti_feat=image_ti_feat, label_id=label_ids, auxlabel_id=auxlabel_ids))
+                                segment_ids=segment_ids, img_feat=image, label_id=label_ids, auxlabel_id=auxlabel_ids))
 
     print('the number of problematic samples: ' + str(count))
     return features
