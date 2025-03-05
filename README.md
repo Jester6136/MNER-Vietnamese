@@ -33,23 +33,25 @@ lr_pixelcnn=0.001
 weight_decay_pixelcnn=0.00005
 learning_rate=3e-5
 num_train_epochs=10
-train_batch_size=64
-path_image="twitter2017/ner_image"
-bert_model="google-bert/bert-base-cased"
-data_dir="twitter2017"
+train_batch_size=32
+path_image="/home/rad/bags/vlsp_all/origin+image/VLSP2016/ner_image"
+bert_model="vinai/phobert-base-v2"
+data_dir="/home/rad/bags/vlsp_all/origin+image/VLSP2016"
 resnet_root="modules/resnet"
 cache_dir="cache"
 max_seq_length=256
 
-python bert_train_umt_pixelcnn_fixedlr.py \
+python train_umt_pixelcnn_fixedlr.py \
     --do_train \
     --do_eval \
-    --output_dir ./output_result_${data_dir}_epoch${num_train_epochs}_${train_batch_size}_alpha${alpha}_beta${beta}_theta${theta}_sigma${sigma}_weight_decay_pixelcnn${weight_decay_pixelcnn}_lr_pixelcnn${lr_pixelcnn}_lr${learning_rate} \
+    --output_dir $_beta${beta}_theta${theta}_sigma${sigma}_lr${learning_rate} \
     --bert_model "${bert_model}" \
     --alpha ${alpha} \
     --beta ${beta} \
     --sigma ${sigma} \
     --theta ${theta} \
+    --warmup_proportion 0.4 \
+    --gradient_accumulation_steps 8 \
     --weight_decay_pixelcnn ${weight_decay_pixelcnn} \
     --lr_pixelcnn ${lr_pixelcnn} \
     --learning_rate ${learning_rate} \
