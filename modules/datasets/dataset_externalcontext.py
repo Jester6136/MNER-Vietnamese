@@ -1,6 +1,7 @@
 import torch 
 import logging
 import os
+from transformers import AutoTokenizer
 logger = logging.getLogger(__name__)
 from torchvision import transforms
 from PIL import Image
@@ -44,10 +45,10 @@ class SBInputFeatures(object):
         segment_ids_origin,
         img_feat,
         img_ti_feat,
-        label_id_external,
-        label_id_origin,
-        auxlabel_id_external,
-        auxlabel_id_origin
+        label_ids_external,
+        label_ids_origin,
+        auxlabel_ids_external,
+        auxlabel_ids_origin
     ):
         # External inputs
         self.input_ids_external = input_ids_external
@@ -66,21 +67,21 @@ class SBInputFeatures(object):
         self.img_ti_feat = img_ti_feat
         
         # Labels
-        self.label_id_external = label_id_external
-        self.label_id_origin = label_id_origin
-        self.auxlabel_id_external = auxlabel_id_external
-        self.auxlabel_id_origin = auxlabel_id_origin
+        self.label_id_external = label_ids_external
+        self.label_id_origin = label_ids_origin
+        self.auxlabel_id_external = auxlabel_ids_external
+        self.auxlabel_id_origin = auxlabel_ids_origin
 
     def __str__(self):
         return (
             f"SBInputFeatures(\n"
             f"  input_ids_external={self.input_ids_external},\n"
-            f"  input_mask_external={self.input_mask_external},\n"
-            f"  added_input_mask_external={self.added_input_mask_external},\n"
-            f"  segment_ids_external={self.segment_ids_external},\n"
             f"  input_ids_origin={self.input_ids_origin},\n"
+            f"  input_mask_external={self.input_mask_external},\n"
             f"  input_mask_origin={self.input_mask_origin},\n"
+            f"  added_input_mask_external={self.added_input_mask_external},\n"
             f"  added_input_mask_origin={self.added_input_mask_origin},\n"
+            f"  segment_ids_external={self.segment_ids_external},\n"
             f"  segment_ids_origin={self.segment_ids_origin},\n"
             f"  img_feat={self.img_feat},\n"
             f"  img_ti_feat={self.img_ti_feat},\n"
@@ -124,6 +125,10 @@ def sbreadfile(filename):
             continue
         splits = line.split('\t')
         
+        if splits[0] == "<eos>":
+            splits[0] = "</s>"
+        if splits[0] == "<EOS>":
+            splits[0] = "</s>"
         if splits[0] == '' or splits[0].isspace() or splits[0] in SPECIAL_TOKENS or splits[0].startswith(URL_PREFIX):
             splits[0] = "<unk>"
         
@@ -404,10 +409,10 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list, max_seq
                 segment_ids_origin=segment_ids_origin,
                 img_feat=image,
                 img_ti_feat=image_ti_feat,
-                label_id_external=label_ids_external,
-                label_id_origin=label_ids_origin,
-                auxlabel_id_external=auxlabel_ids_external,
-                auxlabel_id_origin=auxlabel_ids_origin
+                label_ids_external=label_ids_external,
+                label_ids_origin=label_ids_origin,
+                auxlabel_ids_external=auxlabel_ids_external,
+                auxlabel_ids_origin=auxlabel_ids_origin
             ))
 
     print('the number of problematic samples: ' + str(count))
@@ -426,8 +431,10 @@ if __name__ == "__main__":
 
     data_dir = r'sample_data'
     train_examples = processor.get_train_examples(data_dir)
+    
+    tokenizer = AutoTokenizer.from_pretrained('vinai/phobert-base-v2',cache_dir='cache')
     out = convert_mm_examples_to_features(
-        train_examples, label_list, auxlabel_list, max_seq_length=512, tokenizer=None, crop_size=224, path_img=data_dir
+        train_examples, label_list, auxlabel_list, max_seq_length=512, tokenizer=tokenizer, crop_size=224, path_img=data_dir+"/ner_image"
     )
     for feature in out[:2]:
         print(str(feature))
