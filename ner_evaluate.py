@@ -2,50 +2,50 @@ import codecs
 import numpy as np 
 
 def get_chunks(seq, tags):
-	"""
-	tags:dic{'per':1,....}
-	Args:
-		seq: [4, 4, 0, 0, ...] sequence of labels
-		tags: dict["O"] = 4
-	Returns:
-		list of (chunk_type, chunk_start, chunk_end)
+    """
+    tags: dict like {'O': 4, 'B-PER': 1, 'I-PER': 2, ...}
+    Args:
+        seq: [4, 4, 0, 0, ...] sequence of labels
+        tags: dict["O"] = 4
+    Returns:
+        list of (chunk_type, chunk_start, chunk_end)
+    Example:
+        seq = [4, 5, 0, 3]
+        tags = {"B-PER": 4, "I-PER": 5, "B-LOC": 3, "O": 0}
+        result = [("PER", 0, 2), ("LOC", 3, 4)]
+    """
+    default = tags['O']
+    idx_to_tag = {idx: tag for tag, idx in tags.items()}
+    chunks = []
+    chunk_type, chunk_start = None, None
 
-	Example:
-		seq = [4, 5, 0, 3]
-		tags = {"B-PER": 4, "I-PER": 5, "B-LOC": 3}
-		result = [("PER", 0, 2), ("LOC", 3, 4)]
-	"""
-	default = tags['O']
-	idx_to_tag = {idx: tag for tag, idx in tags.items()}
-	chunks = []
-	# chunk_type用于判断是什么类型，LOC,PER
-	chunk_type, chunk_start = None, None
-	for i, tok in enumerate(seq):
-		#End of a chunk 1 
-		if tok == default and chunk_type is not None:
-			# Add a chunk.
-			chunk = (chunk_type, chunk_start, i)
-			chunks.append(chunk)
-			chunk_type, chunk_start = None, None
+    for i, tok in enumerate(seq):
+        # Skip padding tokens
+        if tok not in idx_to_tag:
+            continue
 
-		# End of a chunk + start of a chunk!
-		elif tok != default:
-			# tok_chunk_class 判断是以B开头还是I开头
-			# tok_chunk_type 判断是什么类型，PER,LOC
-			tok_chunk_class, tok_chunk_type = get_chunk_type(tok, idx_to_tag)
-			if chunk_type is None:
-				chunk_type, chunk_start = tok_chunk_type, i
-			elif tok_chunk_type != chunk_type or tok_chunk_class == "B":
-				chunk = (chunk_type, chunk_start, i)
-				chunks.append(chunk)
-				chunk_type, chunk_start = tok_chunk_type, i
-		else:
-			pass
-	# end condition
-	if chunk_type is not None:
-		chunk = (chunk_type, chunk_start, len(seq))
-		chunks.append(chunk)
-	return chunks
+        # End of a chunk
+        if tok == default and chunk_type is not None:
+            chunk = (chunk_type, chunk_start, i)
+            chunks.append(chunk)
+            chunk_type, chunk_start = None, None
+
+        # Process non-default tokens
+        elif tok != default:
+            tok_chunk_class, tok_chunk_type = get_chunk_type(tok, idx_to_tag)
+            if chunk_type is None:
+                chunk_type, chunk_start = tok_chunk_type, i
+            elif tok_chunk_type != chunk_type or tok_chunk_class == "B":
+                chunk = (chunk_type, chunk_start, i)
+                chunks.append(chunk)
+                chunk_type, chunk_start = tok_chunk_type, i
+
+    # Add final chunk if any
+    if chunk_type is not None:
+        chunk = (chunk_type, chunk_start, len(seq))
+        chunks.append(chunk)
+
+    return chunks
 
 def get_chunk_type(tok, idx_to_tag):
 	"""
