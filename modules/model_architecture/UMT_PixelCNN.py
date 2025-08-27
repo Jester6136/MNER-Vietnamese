@@ -35,7 +35,7 @@ from torch.nn import CrossEntropyLoss
 
 import torch.nn.functional as F
 from torch.autograd import Variable
-from torch.nn.utils import weight_norm as wn
+from torch.nn.utils.parametrizations import weight_norm as wn
 from torch.nn.parameter import Parameter
 logger = logging.getLogger(__name__)
 import numpy as np
@@ -173,8 +173,8 @@ class down_right_shifted_deconv2d(nn.Module):
     def __init__(self, num_filters_in, num_filters_out, filter_size=(2, 2), stride=(1, 1),
                  shift_output_right=False):
         super(down_right_shifted_deconv2d, self).__init__()
-        self.deconv = wn(nn.ConvTranspose2d(num_filters_in, num_filters_out, filter_size,
-                                            stride, output_padding=1))
+        self.deconv = nn.ConvTranspose2d(num_filters_in, num_filters_out, filter_size,
+                                            stride, output_padding=1)
         self.filter_size = filter_size
         self.stride = stride
 
@@ -224,8 +224,8 @@ def log_prob_from_logits(x):
 class down_shifted_deconv2d(nn.Module):
     def __init__(self, num_filters_in, num_filters_out, filter_size=(2, 3), stride=(1, 1)):
         super(down_shifted_deconv2d, self).__init__()
-        self.deconv = wn(nn.ConvTranspose2d(num_filters_in, num_filters_out, filter_size, stride,
-                                            output_padding=1))
+        self.deconv = nn.ConvTranspose2d(num_filters_in, num_filters_out, filter_size, stride,
+                                            output_padding=1)
         self.filter_size = filter_size
         self.stride = stride
 
@@ -238,7 +238,7 @@ class down_shifted_deconv2d(nn.Module):
 class nin(nn.Module):
     def __init__(self, dim_in, dim_out):
         super(nin, self).__init__()
-        self.lin_a = wn(nn.Linear(dim_in, dim_out))
+        self.lin_a = nn.Linear(dim_in, dim_out)
         self.dim_out = dim_out
 
     def forward(self, x):
@@ -269,7 +269,7 @@ class down_shifted_conv2d(nn.Module):
                                  0))                           # pad down
 
         if norm == 'weight_norm':
-            self.conv = wn(self.conv)
+            self.conv = self.conv
         elif norm == 'batch_norm':
             self.bn = nn.BatchNorm2d(num_filters_out)
 
@@ -296,7 +296,7 @@ class down_right_shifted_conv2d(nn.Module):
         self.norm = norm
 
         if norm == 'weight_norm':
-            self.conv = wn(self.conv)
+            self.conv = self.conv
         elif norm == 'batch_norm':
             self.bn = nn.BatchNorm2d(num_filters_out)
 
@@ -330,8 +330,8 @@ class gated_resnet(nn.Module):
         self.dropout = nn.Dropout2d(0.5)
         self.conv_out = conv_op(2 * num_filters, 2 * num_filters)
 
-        hw_normal = torch.normal(mean=0, std=0.05, size=(h_dim, num_filters*2))
-        self.hw = Parameter(hw_normal, requires_grad=True)
+        self.hw = nn.Parameter(torch.empty(h_dim, num_filters * 2))
+        nn.init.xavier_uniform_(self.hw)
         self.num_filters = num_filters
 
     def forward(self, og_x, a=None, h=None):
@@ -510,73 +510,61 @@ class ImageDecoder(nn.Module):
         return x_out
 
 def discretized_mix_logistic_loss(x, l):
-    """ log-likelihood for mixture of discretized logistics, assumes the data has been rescaled to [-1,1] interval """
-    # Pytorch ordering
-    x = x.permute(0, 2, 3, 1)
+    """Stable log-likelihood for mixture of discretized logistics"""
+    x = x.permute(0, 2, 3, 1)  # BCHW -> BHWC
     l = l.permute(0, 2, 3, 1)
-    xs = [int(y) for y in x.size()]
-    ls = [int(y) for y in l.size()]
+    xs = list(x.size())
+    ls = list(l.size())
 
-    # here and below: unpacking the params of the mixture of logistics
-    nr_mix = int(ls[-1] / 10)
+    nr_mix = ls[-1] // 10
     logit_probs = l[:, :, :, :nr_mix]
-    l = l[:, :, :, nr_mix:].contiguous().view(
-        xs + [nr_mix * 3])  # 3 for mean, scale, coef
+    l = l[:, :, :, nr_mix:].contiguous().view(xs + [nr_mix * 3])
+
     means = l[:, :, :, :, :nr_mix]
-    # log_scales = torch.max(l[:, :, :, :, nr_mix:2 * nr_mix], -7.)
-    log_scales = torch.clamp(l[:, :, :, :, nr_mix:2 * nr_mix], min=-7.)
+    log_scales = torch.clamp(l[:, :, :, :, nr_mix:2 * nr_mix], min=-7., max=7.)
+    coeffs = torch.tanh(l[:, :, :, :, 2 * nr_mix:3 * nr_mix])
 
-    coeffs = F.tanh(l[:, :, :, :, 2 * nr_mix:3 * nr_mix])
-    # here and below: getting the means and adjusting them based on preceding
-    # sub-pixels
-    x = x.contiguous()
-    x = x.unsqueeze(-1) + Variable(torch.zeros(xs +
-                                               [nr_mix]).cuda(), requires_grad=False)
-    m2 = (means[:, :, :, 1, :] + coeffs[:, :, :, 0, :]
-          * x[:, :, :, 0, :]).view(xs[0], xs[1], xs[2], 1, nr_mix)
+    x = x.contiguous().unsqueeze(-1)
+    x = x + Variable(torch.zeros(xs + [nr_mix], device=x.device), requires_grad=False)
 
-    m3 = (means[:, :, :, 2, :] + coeffs[:, :, :, 1, :] * x[:, :, :, 0, :] +
-          coeffs[:, :, :, 2, :] * x[:, :, :, 1, :]).view(xs[0], xs[1], xs[2], 1, nr_mix)
+    # adjust means
+    m2 = means[:, :, :, 1, :] + coeffs[:, :, :, 0, :] * x[:, :, :, 0, :]
+    m3 = means[:, :, :, 2, :] + coeffs[:, :, :, 1, :] * x[:, :, :, 0, :] + coeffs[:, :, :, 2, :] * x[:, :, :, 1, :]
+    means = torch.stack([means[:, :, :, 0, :], m2, m3], dim=3)
 
-    means = torch.cat((means[:, :, :, 0, :].unsqueeze(3), m2, m3), dim=3)
+    # probability
     centered_x = x - means
     inv_stdv = torch.exp(-log_scales)
-    plus_in = inv_stdv * (centered_x + 1. / 255.)
+    inv_stdv = torch.clamp(inv_stdv, 1e-7, 1e7)  # avoid extreme values
+
+    plus_in = torch.clamp(inv_stdv * (centered_x + 1. / 255.), -30., 30.)
     cdf_plus = torch.sigmoid(plus_in)
-    min_in = inv_stdv * (centered_x - 1. / 255.)
+    min_in = torch.clamp(inv_stdv * (centered_x - 1. / 255.), -30., 30.)
     cdf_min = torch.sigmoid(min_in)
-    # log probability for edge case of 0 (before scaling)
-    log_cdf_plus = plus_in - F.softplus(plus_in)
-    # log probability for edge case of 255 (before scaling)
-    log_one_minus_cdf_min = -F.softplus(min_in)
-    cdf_delta = cdf_plus - cdf_min  # probability for all other cases
-    mid_in = inv_stdv * centered_x
-    # log probability in the center of the bin, to be used in extreme cases
-    # (not actually used in our code)
+
+    # edge cases
+    log_cdf_plus = plus_in - F.softplus(plus_in)          # log(sigmoid)
+    log_one_minus_cdf_min = -F.softplus(min_in)           # log(1 - sigmoid)
+
+    # mid
+    mid_in = torch.clamp(inv_stdv * centered_x, -30., 30.)
     log_pdf_mid = mid_in - log_scales - 2. * F.softplus(mid_in)
 
-    # now select the right output: left edge case, right edge case, normal
-    # case, extremely low prob case (doesn't actually happen for us)
-
-    # this is what we are really doing, but using the robust version below for extreme cases in other applications and to avoid NaN issue with tf.select()
-    # log_probs = tf.select(x < -0.999, log_cdf_plus, tf.select(x > 0.999, log_one_minus_cdf_min, tf.log(cdf_delta)))
-
-    # robust version, that still works if probabilities are below 1e-5 (which never happens in our code)
-    # tensorflow backpropagates through tf.select() by multiplying with zero instead of selecting: this requires use to use some ugly tricks to avoid potential NaNs
-    # the 1e-12 in tf.maximum(cdf_delta, 1e-12) is never actually used as output, it's purely there to get around the tf.select() gradient issue
-    # if the probability on a sub-pixel is below 1e-5, we use an approximation
-    # based on the assumption that the log-density is constant in the bin of
-    # the observed sub-pixel value
+    # safe cdf_delta
+    cdf_delta = torch.clamp(cdf_plus - cdf_min, min=1e-12)
 
     inner_inner_cond = (cdf_delta > 1e-5).float()
-    inner_inner_out = inner_inner_cond * torch.log(torch.clamp(
-        cdf_delta, min=1e-12)) + (1. - inner_inner_cond) * (log_pdf_mid - np.log(127.5))
+    inner_inner_out = inner_inner_cond * torch.log(cdf_delta) + \
+                      (1. - inner_inner_cond) * (log_pdf_mid - np.log(127.5))
+
     inner_cond = (x > 0.999).float()
-    inner_out = inner_cond * log_one_minus_cdf_min + \
-        (1. - inner_cond) * inner_inner_out
+    inner_out = inner_cond * log_one_minus_cdf_min + (1. - inner_cond) * inner_inner_out
+
     cond = (x < -0.999).float()
     log_probs = cond * log_cdf_plus + (1. - cond) * inner_out
-    log_probs = torch.sum(log_probs, dim=3) + log_prob_from_logits(logit_probs)
+
+    # sum over channels + mixture
+    log_probs = torch.sum(log_probs, dim=3) + log_prob_from_logits(torch.clamp(logit_probs, -30., 30.))
 
     return -torch.mean(log_sum_exp(log_probs))
 
@@ -595,6 +583,7 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
     def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels=2):
         super(UMT_PixelCNN, self).__init__(config)
         self.num_labels = num_labels_
+        self.auxnum_labels = auxnum_labels
         self.roberta = RobertaModel(config)
         #self.trans_matrix = torch.zeros(num_labels, auxnum_labels)
         self.image_decoder = ImageDecoder(nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
@@ -619,11 +608,11 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         self.txt2txt_attention = RobertaCrossEncoder(config, layer_num3)
         self.gate = nn.Linear(config.hidden_size * 2, config.hidden_size)
         ### self.self_attention = BertLastSelfAttention(config)
-        self.classifier = nn.Linear(config.hidden_size * 2, num_labels_)
-        self.aux_classifier = nn.Linear(config.hidden_size, auxnum_labels)
+        self.classifier = nn.Linear(config.hidden_size * 2, self.num_labels)
+        self.aux_classifier = nn.Linear(config.hidden_size, self.auxnum_labels)
 
-        self.crf = CRF(num_labels_, batch_first=True)
-        self.aux_crf = CRF(auxnum_labels, batch_first=True)
+        self.crf = CRF(self.num_labels, batch_first=True)
+        self.aux_crf = CRF(self.auxnum_labels, batch_first=True)
 
         self.init_weights()
 
@@ -758,7 +747,7 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
             image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
             cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
 
-            # print(f"aux_loss: {aux_loss}, main_loss: {main_loss}, loss_ti: {loss_ti}, cl_loss: {cl_loss}")
+            print(f"aux_loss: {aux_loss}, main_loss: {main_loss}, loss_ti: {loss_ti}, cl_loss: {cl_loss}")
             loss = main_loss + theta * cl_loss + beta*aux_loss + loss_ti*sigma 
             return loss
         else:
@@ -769,5 +758,21 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
 if __name__ == "__main__": 
     # image_decoder = ImageDecoder(nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
     #                              resnet_nonlinearity='concat_elu', input_channels=3)
-    model = UMT_PixelCNN.from_pretrained('vinai/phobert-base-v2',cache_dir='cache')
-    print(model)
+    # model = UMT_PixelCNN.from_pretrained('vinai/phobert-base-v2',cache_dir='cache')
+    
+    from modules.model_architecture.helper import reinit_custom_modules
+    # np.random.seed(11)
+    # torch.manual_seed(11)
+    model = UMT_PixelCNN.from_pretrained('vinai/phobert-base-v2',cache_dir='cache', layer_num1=1, layer_num2=1, layer_num3=1, num_labels_=13, auxnum_labels=7)
+    # model.to('cuda')
+    reinit_custom_modules(model)
+    # Check for NaN values
+    aaa =[]
+    for name, param in model.named_parameters():
+        if torch.isnan(param).any():
+            aaa.append(f"NaN found in {name}")
+        if torch.isinf(param).any():
+            aaa.append(f"Inf found in {name}")
+
+    if aaa:
+        print(aaa)

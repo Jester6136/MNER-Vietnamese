@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer,BertConfig
 from modules.model_architecture.UMT_PixelCNN import UMT_PixelCNN
 from modules.resnet import resnet as resnet
+from modules.model_architecture.helper import reinit_custom_modules
 from modules.resnet.resnet_utils import myResnet
 from modules.datasets.dataset_roberta_main import convert_mm_examples_to_features,MNERProcessor
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
@@ -181,7 +182,6 @@ parser.add_argument('--fine_tune_cnn', action='store_true', help='fine tune pre-
 parser.add_argument('--resnet_root', default='./out_res', help='path the pre-trained cnn models')
 parser.add_argument('--crop_size', type=int, default=224, help='crop size of image')
 parser.add_argument('--path_image', default='./IJCAI2019_data/twitter2017_images/', help='path to images')
-# parser.add_argument('--mm_model', default='TomBert', help='model name') #
 parser.add_argument('--server_ip', type=str, default='', help="Can be used for distant debugging.")
 parser.add_argument('--server_port', type=str, default='', help="Can be used for distant debugging.")
 args = parser.parse_args()
@@ -396,6 +396,7 @@ if args.mm_model == 'MTCCMBert':
                                 layer_num2=args.layer_num2,
                                 layer_num3=args.layer_num3,
                                 num_labels_=num_labels, auxnum_labels = auxnum_labels)
+    reinit_custom_modules(model)
 else:
     print('please define your MNER Model')
 
@@ -407,6 +408,19 @@ if args.fp16:
     model.half()
     encoder.half()
 model.to(device)
+
+
+# Check for NaN values
+aaa =[]
+for name, param in model.named_parameters():
+    if torch.isnan(param).any():
+        aaa.append(f"NaN found in {name}")
+    if torch.isinf(param).any():
+        aaa.append(f"Inf found in {name}")
+
+if aaa:
+    print(aaa)
+    raise aaa
 encoder.to(device)
 if args.local_rank != -1:
     try:
