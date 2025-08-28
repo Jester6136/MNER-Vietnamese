@@ -172,8 +172,6 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
             text_output_cl = self.text_ouput_cl(self.relu(self.text_dense_cl(pooler_output)))
             image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
             cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
-
-            print(f"aux_loss: {aux_loss}, main_loss: {main_loss}, loss_ti: {loss_ti}, cl_loss: {cl_loss}")
             loss = main_loss + theta * cl_loss + beta*aux_loss + loss_ti*sigma 
             return loss
         else:
