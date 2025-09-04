@@ -1,5 +1,7 @@
 import os
 import sys
+
+from modules.model_architecture.helper import reinitialize_conv2d
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import argparse
 
@@ -396,6 +398,7 @@ if args.mm_model == 'MTCCMBert':
                                 layer_num2=args.layer_num2,
                                 layer_num3=args.layer_num3,
                                 num_labels_=num_labels, auxnum_labels = auxnum_labels)
+    reinitialize_conv2d(model)
 else:
     print('please define your MNER Model')
 

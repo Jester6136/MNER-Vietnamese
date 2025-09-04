@@ -1,7 +1,7 @@
 from modules.model_architecture.common import RobertaPreTrainedModel, RobertaModel, ImageDecoder, RobertaSelfEncoder,RobertaCrossEncoder, LOSS_TI
 import torch
 from torch import nn
-from torchcrf import CRF
+from modules.model_architecture.torchcrf import CRF
 
 class UMT_PixelCNN(RobertaPreTrainedModel):
     """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.

@@ -1,6 +1,26 @@
 import math
 import torch.nn as nn
 
+def reinitialize_conv2d(model):
+    """
+    Reinitialize weights and biases of all nn.Conv2d layers in the model.
+    Weights: Kaiming uniform initialization (suitable for ReLU-like non-linearities).
+    Biases: Constant initialization to 0.0.
+    """
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Conv2d):
+            # Initialize weights with Kaiming uniform
+            nn.init.kaiming_uniform_(module.weight, a=math.sqrt(5))  # a=sqrt(5) for ReLU-like non-linearities
+            # Initialize biases to 0.0 if they exist
+            if module.bias is not None:
+                nn.init.constant_(module.bias, 0.0)
+        elif isinstance(module, nn.BatchNorm2d):
+            # nn.initialize batch norm parameters (if used)
+            nn.init.constant_(module.weight, 1.0)  # Gamma
+            nn.init.constant_(module.bias, 0.0)   # Beta
+            nn.init.constant_(module.running_mean, 0.0)
+            nn.init.constant_(module.running_var, 1.0)
+
 def safe_init_weights(m):
     """Init an toàn cho các layer custom (Conv2d, Linear, CRF)."""
     if isinstance(m, nn.Conv2d):

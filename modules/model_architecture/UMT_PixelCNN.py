@@ -1,8 +1,10 @@
+
+import random
 from modules.model_architecture.common import RobertaPreTrainedModel, RobertaModel, ImageDecoder, RobertaSelfEncoder,RobertaCrossEncoder, LOSS_TI
+import numpy as np
 import torch
 from torch import nn
-from torchcrf import CRF
-
+from modules.model_architecture.torchcrf import CRF
 class UMT_PixelCNN(RobertaPreTrainedModel):
     """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
     """
@@ -180,10 +182,12 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
 
 
 if __name__ == "__main__": 
-    from modules.model_architecture.helper import reinit_custom_modules
+    random.seed(37)
+    np.random.seed(37)
+    torch.manual_seed(37)
+    from modules.model_architecture.helper import reinitialize_conv2d
     model = UMT_PixelCNN.from_pretrained('vinai/phobert-base-v2',cache_dir='cache', layer_num1=1, layer_num2=1, layer_num3=1, num_labels_=13, auxnum_labels=7)
-    # model.to('cuda')
-    reinit_custom_modules(model)
+    reinitialize_conv2d(model)
     # Check for NaN values
     aaa =[]
     for name, param in model.named_parameters():

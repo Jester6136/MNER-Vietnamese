@@ -4,13 +4,14 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import copy
 import logging
 import math
-import pdb
+
 import torch
 from torch import nn
-from torch.autograd import Variable
+from torch.nn.utils import weight_norm as wn
 import torch.nn.functional as F
+from torch.autograd import Variable
 logger = logging.getLogger(__name__)
-import numpy as np 
+import numpy as np
 
 def gelu(x):
     """Implementation of the gelu activation function.
@@ -141,52 +142,13 @@ class RobertaCrossAttentionLayer(nn.Module):
         intermediate_output = self.intermediate(attention_output)
         layer_output = self.output(intermediate_output, attention_output)
         return layer_output
-    
-class ConvTranspose2dWN(nn.ConvTranspose2d):
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        kernel_size,
-        stride=1,
-        padding=0,
-        output_padding=0,
-        dilation=1,
-        groups=1,
-        bias=True,
-    ):
-        super(ConvTranspose2dWN, self).__init__(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=stride,
-            padding=padding,
-            output_padding=output_padding,
-            groups=groups,
-            bias=bias,
-            dilation=dilation,
-        )
-        self.g = nn.Parameter(torch.ones(out_channels))
 
-    def forward(self, x):
-        wnorm = torch.sqrt(torch.sum(self.weight**2)) + 1e-8
-        return F.conv_transpose2d(
-            x,
-            self.weight * self.g[None, :, None, None] / wnorm,
-            bias=self.bias,
-            stride=self.stride,
-            padding=self.padding,
-            output_padding=self.output_padding,
-            dilation=self.dilation,
-            groups=self.groups,
-        )
-    
 class down_right_shifted_deconv2d(nn.Module):
     def __init__(self, num_filters_in, num_filters_out, filter_size=(2, 2), stride=(1, 1),
                  shift_output_right=False):
         super(down_right_shifted_deconv2d, self).__init__()
-        self.deconv = ConvTranspose2dWN(num_filters_in, num_filters_out, filter_size,
-                                            stride, output_padding=1)
+        self.deconv = wn(nn.ConvTranspose2d(num_filters_in, num_filters_out, filter_size,
+                                            stride, output_padding=1))
         self.filter_size = filter_size
         self.stride = stride
 
@@ -196,7 +158,7 @@ class down_right_shifted_deconv2d(nn.Module):
         x = x[:, :, :(xs[2] - self.filter_size[0] + 1):,
               :(xs[3] - self.filter_size[1] + 1)]
         return x
-
+    
 def down_shift(x, pad=None):
     # Pytorch ordering
     xs = [int(y) for y in x.size()]
@@ -236,8 +198,8 @@ def log_prob_from_logits(x):
 class down_shifted_deconv2d(nn.Module):
     def __init__(self, num_filters_in, num_filters_out, filter_size=(2, 3), stride=(1, 1)):
         super(down_shifted_deconv2d, self).__init__()
-        self.deconv = ConvTranspose2dWN(num_filters_in, num_filters_out, filter_size,
-                                            stride, output_padding=1)
+        self.deconv = wn(nn.ConvTranspose2d(num_filters_in, num_filters_out, filter_size, stride,
+                                            output_padding=1))
         self.filter_size = filter_size
         self.stride = stride
 
@@ -247,19 +209,10 @@ class down_shifted_deconv2d(nn.Module):
         return x[:, :, :(xs[2] - self.filter_size[0] + 1),
                  int((self.filter_size[1] - 1) / 2):(xs[3] - int((self.filter_size[1] - 1) / 2))]
 
-class LinearWN(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True):
-        super(LinearWN, self).__init__(in_features, out_features, bias)
-        self.g = nn.Parameter(torch.ones(out_features))
-
-    def forward(self, input):
-        wnorm = torch.sqrt(torch.sum(self.weight**2)) + 1e-8
-        return F.linear(input, self.weight * self.g[:, None] / wnorm, self.bias)
-    
 class nin(nn.Module):
     def __init__(self, dim_in, dim_out):
         super(nin, self).__init__()
-        self.lin_a = LinearWN(dim_in, dim_out)
+        self.lin_a = wn(nn.Linear(dim_in, dim_out))
         self.dim_out = dim_out
 
     def forward(self, x):
@@ -274,51 +227,13 @@ class nin(nn.Module):
         out = out.view(shp)
         return out.permute(0, 3, 1, 2)
 
-
-class Conv2dWN(nn.Conv2d):
-    def __init__(
-        self,
-        in_channels,
-        out_channels,
-        kernel_size,
-        stride=1,
-        padding=0,
-        dilation=1,
-        groups=1,
-        bias=True,
-    ):
-        super(Conv2dWN, self).__init__(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride,
-            padding,
-            dilation,
-            groups,
-            True,
-        )
-        self.g = nn.Parameter(torch.ones(out_channels))
-
-    def forward(self, x):
-        wnorm = torch.sqrt(torch.sum(self.weight**2)) + 1e-8
-        return F.conv2d(
-            x,
-            self.weight * self.g[:, None, None, None] / wnorm,
-            bias=self.bias,
-            stride=self.stride,
-            padding=self.padding,
-            dilation=self.dilation,
-            groups=self.groups,
-        )
-
-
 class down_shifted_conv2d(nn.Module):
     def __init__(self, num_filters_in, num_filters_out, filter_size=(2, 3), stride=(1, 1),
                  shift_output_down=False, norm='weight_norm'):
         super(down_shifted_conv2d, self).__init__()
 
         assert norm in [None, 'batch_norm', 'weight_norm']
-        self.conv = Conv2dWN(
+        self.conv = nn.Conv2d(
             num_filters_in, num_filters_out, filter_size, stride)
         self.shift_output_down = shift_output_down
         self.norm = norm
@@ -326,6 +241,12 @@ class down_shifted_conv2d(nn.Module):
                                  int((filter_size[1] - 1) / 2),  # pad right
                                  filter_size[0] - 1,            # pad top
                                  0))                           # pad down
+
+        if norm == 'weight_norm':
+            self.conv = wn(self.conv)
+        elif norm == 'batch_norm':
+            self.bn = nn.BatchNorm2d(num_filters_out)
+
         if shift_output_down:
             self.down_shift = lambda x: down_shift(
                 x, pad=nn.ZeroPad2d((0, 0, 1, 0)))
@@ -343,10 +264,15 @@ class down_right_shifted_conv2d(nn.Module):
 
         assert norm in [None, 'batch_norm', 'weight_norm']
         self.pad = nn.ZeroPad2d((filter_size[1] - 1, 0, filter_size[0] - 1, 0))
-        self.conv = Conv2dWN(
+        self.conv = nn.Conv2d(
             num_filters_in, num_filters_out, filter_size, stride=stride)
         self.shift_output_right = shift_output_right
         self.norm = norm
+
+        if norm == 'weight_norm':
+            self.conv = wn(self.conv)
+        elif norm == 'batch_norm':
+            self.bn = nn.BatchNorm2d(num_filters_out)
 
         if shift_output_right:
             self.right_shift = lambda x: right_shift(
@@ -365,7 +291,7 @@ def concat_elu(x):
     return F.elu(torch.cat([x, -x], dim=axis))
 
 class gated_resnet(nn.Module):
-    def __init__(self, num_filters, conv_op, nonlinearity=concat_elu, skip_connection=0, h_dim=768):
+    def __init__(self, num_filters, conv_op: down_shifted_conv2d, nonlinearity=concat_elu, skip_connection=0, h_dim=768):
         super(gated_resnet, self).__init__()
         self.skip_connection = skip_connection
         self.nonlinearity = nonlinearity
@@ -378,8 +304,7 @@ class gated_resnet(nn.Module):
         self.dropout = nn.Dropout2d(0.5)
         self.conv_out = conv_op(2 * num_filters, 2 * num_filters)
 
-        hw_normal = torch.normal(mean=0, std=0.05, size=(h_dim, num_filters*2))
-        self.hw = nn.Parameter(hw_normal, requires_grad=True)
+        self.hw = nn.Parameter(torch.empty(h_dim, num_filters * 2).uniform_(-0.1, 0.1))
         self.num_filters = num_filters
 
     def forward(self, og_x, a=None, h=None):
@@ -556,6 +481,7 @@ class ImageDecoder(nn.Module):
         assert len(u_list) == len(ul_list) == 0, pdb.set_trace()
 
         return x_out
+
 
 def discretized_mix_logistic_loss(x, l):
     """ log-likelihood for mixture of discretized logistics, assumes the data has been rescaled to [-1,1] interval """

@@ -4,7 +4,7 @@ import copy
 from transformers.models.roberta.modeling_roberta import RobertaIntermediate,RobertaOutput,RobertaSelfOutput,RobertaPreTrainedModel
 from transformers import BertConfig
 from torch import nn as nn
-from torchcrf import CRF
+from modules.model_architecture.torchcrf import CRF
 import torch
 import math
 import json

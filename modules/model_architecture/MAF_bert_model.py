@@ -4,7 +4,7 @@ import copy
 from transformers.models.bert.modeling_bert import BertIntermediate,BertOutput,BertSelfOutput,BertPreTrainedModel
 from transformers import BertConfig
 from torch import nn as nn
-from torchcrf import CRF
+from modules.model_architecture.torchcrf import CRF
 import torch
 import math
 import json

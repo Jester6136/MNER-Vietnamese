@@ -1,6 +1,6 @@
 import os
 import sys
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import argparse
 
 import logging
@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer,BertConfig
 from modules.model_architecture.UMT_PixelCNN import UMT_PixelCNN
 from modules.resnet import resnet as resnet
-from modules.model_architecture.helper import reinit_custom_modules
+from modules.model_architecture.helper import reinit_custom_modules, reinitialize_conv2d
 from modules.resnet.resnet_utils import myResnet
 from modules.datasets.dataset_roberta_main import convert_mm_examples_to_features,MNERProcessor
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
@@ -217,7 +217,7 @@ else:
 logger.info("device: {} n_gpu: {}, distributed training: {}, 16-bits training: {}".format(
     device, n_gpu, bool(args.local_rank != -1), args.fp16))
 
-if args.gradient_accumulation_steps < 1:
+if args.gradient_accumulation_steps < 1 or args.train_batch_size < args.gradient_accumulation_steps:
     raise ValueError("Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(
         args.gradient_accumulation_steps))
 
@@ -390,13 +390,25 @@ if args.do_train:
     if args.local_rank != -1:
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
+
 if args.mm_model == 'MTCCMBert':
     model = UMT_PixelCNN.from_pretrained(args.bert_model,
                                 cache_dir=args.cache_dir, layer_num1=args.layer_num1,
                                 layer_num2=args.layer_num2,
                                 layer_num3=args.layer_num3,
                                 num_labels_=num_labels, auxnum_labels = auxnum_labels)
-    reinit_custom_modules(model)
+    # reinit_custom_modules(model)
+    reinitialize_conv2d(model)
+    aaa =[]
+    for name, param in model.named_parameters():
+        if torch.isnan(param).any():
+            aaa.append(f"NaN found in {name}")
+        if torch.isinf(param).any():
+            aaa.append(f"Inf found in {name}")
+
+    if aaa:
+        print(aaa)
+        raise ValueError("NaN or Inf values found in the model parameters.")
 else:
     print('please define your MNER Model')
 
@@ -404,23 +416,12 @@ net = getattr(resnet, 'resnet152')()
 net.load_state_dict(torch.load(os.path.join(args.resnet_root, 'resnet152.pth'), weights_only=False))
 encoder = myResnet(net, args.fine_tune_cnn, device)
 
-if args.fp16:
-    model.half()
-    encoder.half()
+# if args.fp16:
+#     model.half()
+#     encoder.half()
 model.to(device)
 
 
-# Check for NaN values
-aaa =[]
-for name, param in model.named_parameters():
-    if torch.isnan(param).any():
-        aaa.append(f"NaN found in {name}")
-    if torch.isinf(param).any():
-        aaa.append(f"Inf found in {name}")
-
-if aaa:
-    print(aaa)
-    raise aaa
 encoder.to(device)
 if args.local_rank != -1:
     try:
