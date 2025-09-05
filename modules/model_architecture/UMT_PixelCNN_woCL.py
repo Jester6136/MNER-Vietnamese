@@ -131,20 +131,3 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
             pred_tags = self.crf.decode(final_bert_feats, mask=input_mask.byte())
             return pred_tags
 
-
-if __name__ == "__main__": 
-
-    from modules.model_architecture.helper import reinit_custom_modules
-    model = UMT_PixelCNN.from_pretrained('vinai/phobert-base-v2',cache_dir='cache', layer_num1=1, layer_num2=1, layer_num3=1, num_labels_=13, auxnum_labels=7)
-    # model.to('cuda')
-    reinit_custom_modules(model)
-    # Check for NaN values
-    aaa =[]
-    for name, param in model.named_parameters():
-        if torch.isnan(param).any():
-            aaa.append(f"NaN found in {name}")
-        if torch.isinf(param).any():
-            aaa.append(f"Inf found in {name}")
-
-    if aaa:
-        print(aaa)

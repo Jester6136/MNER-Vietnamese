@@ -1,5 +1,8 @@
 
+import math
 import random
+import time
+from transformers import RobertaConfig
 from modules.model_architecture.common import RobertaPreTrainedModel, RobertaModel, ImageDecoder, RobertaSelfEncoder,RobertaCrossEncoder, LOSS_TI
 import numpy as np
 import torch
@@ -23,9 +26,6 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         self.vismap2text = nn.Linear(2048, config.hidden_size)
         self.vismap2text_v2 = nn.Linear(2048, config.hidden_size)
         self.txt2img_attention = RobertaCrossEncoder(config, layer_num1)
-
-
-        
         self.text_dense_cl = nn.Linear(config.hidden_size, config.hidden_size)
         self.text_ouput_cl = nn.Linear(config.hidden_size, config.hidden_size)
         self.relu = nn.ReLU()
@@ -42,7 +42,6 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         self.crf = CRF(self.num_labels, batch_first=True)
         self.aux_crf = CRF(self.auxnum_labels, batch_first=True)
 
-        self.init_weights()
 
     def text_toimage_loss(self,text_h1, image_h1, temp):
         batch_size = text_h1.shape[0]
@@ -169,25 +168,27 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
             main_loss = - self.crf(final_bert_feats, labels, mask=input_mask.byte(), reduction='mean')
             # Loss 3
             image_generate = self.image_decoder(x=image_decode, h=pooler_output)
+            assert torch.isfinite(image_generate).all(), "image_generate has nan"
             loss_ti = LOSS_TI(image_decode, image_generate)
             # Loss 4
             text_output_cl = self.text_ouput_cl(self.relu(self.text_dense_cl(pooler_output)))
             image_ouput_cl = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
             cl_loss = self.total_loss(text_output_cl, image_ouput_cl, temp, temp_lamb)
-            loss = main_loss + theta * cl_loss + beta*aux_loss + loss_ti*sigma 
+            loss = main_loss + theta * cl_loss + beta*aux_loss + loss_ti*sigma
             return loss
         else:
             pred_tags = self.crf.decode(final_bert_feats, mask=input_mask.byte())
             return pred_tags
 
 
-if __name__ == "__main__": 
+if __name__ == "__main__":
     random.seed(37)
     np.random.seed(37)
     torch.manual_seed(37)
-    from modules.model_architecture.helper import reinitialize_conv2d
-    model = UMT_PixelCNN.from_pretrained('vinai/phobert-base-v2',cache_dir='cache', layer_num1=1, layer_num2=1, layer_num3=1, num_labels_=13, auxnum_labels=7)
-    reinitialize_conv2d(model)
+    config = RobertaConfig.from_pretrained('vinai/phobert-base-v2', cache_dir='cache')
+    roberta_pretrained = RobertaModel.from_pretrained('vinai/phobert-base-v2', cache_dir='cache')
+    model = UMT_PixelCNN(config, layer_num1=1, layer_num2=1, layer_num3=1, num_labels_=13, auxnum_labels=7)
+    model.roberta.load_state_dict(roberta_pretrained.state_dict())
     # Check for NaN values
     aaa =[]
     for name, param in model.named_parameters():

@@ -8,14 +8,14 @@ import random
 import numpy as np
 import torch
 import torch.nn.functional as F
-from transformers import AutoTokenizer,BertConfig
+from transformers import AutoTokenizer, RobertaConfig
+from modules.model_architecture.common import RobertaModel
 from modules.model_architecture.UMT_PixelCNN import UMT_PixelCNN
 from modules.resnet import resnet as resnet
-from modules.model_architecture.helper import reinit_custom_modules, reinitialize_conv2d
 from modules.resnet.resnet_utils import myResnet
 from modules.datasets.dataset_roberta_main import convert_mm_examples_to_features,MNERProcessor
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
-                              TensorDataset)                        
+                              TensorDataset)
 from pytorch_pretrained_bert.optimization import BertAdam,warmup_linear
 from ner_evaluate import evaluate_each_class
 from seqeval.metrics import classification_report
@@ -392,23 +392,13 @@ if args.do_train:
 
 
 if args.mm_model == 'MTCCMBert':
-    model = UMT_PixelCNN.from_pretrained(args.bert_model,
-                                cache_dir=args.cache_dir, layer_num1=args.layer_num1,
+    config = RobertaConfig.from_pretrained('vinai/phobert-base-v2', cache_dir='cache')
+    roberta_pretrained = RobertaModel.from_pretrained('vinai/phobert-base-v2', cache_dir='cache')
+    model = UMT_PixelCNN(config, layer_num1=args.layer_num1,
                                 layer_num2=args.layer_num2,
                                 layer_num3=args.layer_num3,
                                 num_labels_=num_labels, auxnum_labels = auxnum_labels)
-    # reinit_custom_modules(model)
-    reinitialize_conv2d(model)
-    aaa =[]
-    for name, param in model.named_parameters():
-        if torch.isnan(param).any():
-            aaa.append(f"NaN found in {name}")
-        if torch.isinf(param).any():
-            aaa.append(f"Inf found in {name}")
-
-    if aaa:
-        print(aaa)
-        raise ValueError("NaN or Inf values found in the model parameters.")
+    model.roberta.load_state_dict(roberta_pretrained.state_dict())
 else:
     print('please define your MNER Model')
 
@@ -569,7 +559,6 @@ if args.do_train:
                 optimizer.backward(neg_log_likelihood)
             else:
                 neg_log_likelihood.backward()
-
             tr_loss += neg_log_likelihood.item()
             nb_tr_examples += input_ids.size(0)
             nb_tr_steps += 1
@@ -681,17 +670,16 @@ if args.do_train:
 
 # loadmodel
 if args.mm_model == 'MTCCMBert':
-    # model = UMT_PixelCNN.from_pretrained(args.bert_model,
-    #                             cache_dir=args.cache_dir, layer_num1=args.layer_num1,
-    #                             layer_num2=args.layer_num2,
-    #                             layer_num3=args.layer_num3,
-    #                             num_labels_=num_labels, auxnum_labels = auxnum_labels)
-    # model.load_state_dict(torch.load(output_model_file))
-    # model.to(device)
-    # encoder_state_dict = torch.load(output_encoder_file)
-    # encoder.load_state_dict(encoder_state_dict)
-    # encoder.to(device)                        
-    pass               
+    config = RobertaConfig.from_pretrained(args.bert_model, cache_dir='cache')
+    model = UMT_PixelCNN(config, layer_num1=args.layer_num1,
+                                layer_num2=args.layer_num2,
+                                layer_num3=args.layer_num3,
+                                num_labels_=num_labels, auxnum_labels = auxnum_labels)
+    model.load_state_dict(torch.load(output_model_file))
+    model.to(device)
+    encoder_state_dict = torch.load(output_encoder_file)
+    encoder.load_state_dict(encoder_state_dict)
+    encoder.to(device)
 else:
     print('please define your MNER Model')
 
