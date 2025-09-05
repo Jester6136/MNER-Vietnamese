@@ -185,8 +185,8 @@ if __name__ == "__main__":
     random.seed(37)
     np.random.seed(37)
     torch.manual_seed(37)
-    config = RobertaConfig.from_pretrained('vinai/phobert-base-v2', cache_dir='cache')
-    roberta_pretrained = RobertaModel.from_pretrained('vinai/phobert-base-v2', cache_dir='cache')
+    config = RobertaConfig.from_pretrained(args.bert_model, cache_dir='cache')
+    roberta_pretrained = RobertaModel.from_pretrained(args.bert_model, cache_dir='cache')
     model = UMT_PixelCNN(config, layer_num1=1, layer_num2=1, layer_num3=1, num_labels_=13, auxnum_labels=7)
     model.roberta.load_state_dict(roberta_pretrained.state_dict())
     # Check for NaN values

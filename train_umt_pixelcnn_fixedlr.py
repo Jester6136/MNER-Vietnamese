@@ -392,8 +392,8 @@ if args.do_train:
 
 
 if args.mm_model == 'MTCCMBert':
-    config = RobertaConfig.from_pretrained('vinai/phobert-base-v2', cache_dir='cache')
-    roberta_pretrained = RobertaModel.from_pretrained('vinai/phobert-base-v2', cache_dir='cache')
+    config = RobertaConfig.from_pretrained(args.bert_model, cache_dir='cache')
+    roberta_pretrained = RobertaModel.from_pretrained(args.bert_model, cache_dir='cache')
     model = UMT_PixelCNN(config, layer_num1=args.layer_num1,
                                 layer_num2=args.layer_num2,
                                 layer_num3=args.layer_num3,
