@@ -367,22 +367,21 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
             image_path_fail = os.path.join(path_img, 'background.jpg')
             image = image_process(image_path_fail, transform)
 
-        else:
-            if ex_index < 2:
-                logger.info("*** Example ***")
-                logger.info("guid: %s" % (example.guid))
-                logger.info("tokens: %s" % " ".join(
-                    [str(x) for x in tokens]))
-                logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-                logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-                logger.info(
-                    "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-                logger.info("label: %s" % " ".join([str(x) for x in label_ids]))
-                logger.info("auxlabel: %s" % " ".join([str(x) for x in auxlabel_ids]))
+        if ex_index < 2:
+            logger.info("*** Example ***")
+            logger.info("guid: %s" % (example.guid))
+            logger.info("tokens: %s" % " ".join(
+                [str(x) for x in tokens]))
+            logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
+            logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+            logger.info(
+                "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+            logger.info("label: %s" % " ".join([str(x) for x in label_ids]))
+            logger.info("auxlabel: %s" % " ".join([str(x) for x in auxlabel_ids]))
 
-            features.append(
-                SBInputFeatures(input_ids=input_ids, input_mask=input_mask, added_input_mask=added_input_mask,
-                                segment_ids=segment_ids, img_feat=image, label_id=label_ids, auxlabel_id=auxlabel_ids))
+        features.append(
+            SBInputFeatures(input_ids=input_ids, input_mask=input_mask, added_input_mask=added_input_mask,
+                            segment_ids=segment_ids, img_feat=image, label_id=label_ids, auxlabel_id=auxlabel_ids))
 
     print('the number of problematic samples: ' + str(count))
     return features

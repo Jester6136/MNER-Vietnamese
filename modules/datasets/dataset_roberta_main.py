@@ -277,26 +277,25 @@ def convert_mm_examples_to_features(examples, label_list, auxlabel_list,
             image = image_process(image_path_fail, transform)
             image_ti_feat = image_process(image_path_fail, transform_for_ti)
 
-        else:
-            if ex_index < 2:
-                logger.info("*** Example ***")
-                logger.info("guid: %s" % (example.guid))
-                logger.info("tokens: %s" % " ".join(
-                    [str(x) for x in tokens]))
-                logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-                logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-                logger.info(
-                    "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+        if ex_index < 2:
+            logger.info("*** Example ***")
+            logger.info("guid: %s" % (example.guid))
+            logger.info("tokens: %s" % " ".join(
+                [str(x) for x in tokens]))
+            logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
+            logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+            logger.info(
+                "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
 
-                # logger.info(f"img_feat: {image.shape}")
-                # logger.info(f"img_ti_feat: {image_ti_feat.shape}")
+            # logger.info(f"img_feat: {image.shape}")
+            # logger.info(f"img_ti_feat: {image_ti_feat.shape}")
 
-                logger.info("label: %s" % " ".join([str(x) for x in label_ids]))
-                logger.info("auxlabel: %s" % " ".join([str(x) for x in auxlabel_ids]))
+            logger.info("label: %s" % " ".join([str(x) for x in label_ids]))
+            logger.info("auxlabel: %s" % " ".join([str(x) for x in auxlabel_ids]))
 
-            features.append(
-                SBInputFeatures(input_ids=input_ids, input_mask=input_mask, added_input_mask=added_input_mask,
-                                segment_ids=segment_ids, img_feat=image, img_ti_feat=image_ti_feat, label_id=label_ids, auxlabel_id=auxlabel_ids))
+        features.append(
+            SBInputFeatures(input_ids=input_ids, input_mask=input_mask, added_input_mask=added_input_mask,
+                            segment_ids=segment_ids, img_feat=image, img_ti_feat=image_ti_feat, label_id=label_ids, auxlabel_id=auxlabel_ids))
 
     print('the number of problematic samples: ' + str(count))
     return features
@@ -308,10 +307,15 @@ if __name__ == "__main__":
     auxlabel_list = processor.get_auxlabels()
     num_labels = len(label_list) + 1  # label 0 corresponds to padding, label in label_list starts from 1
 
-
     start_label_id = processor.get_start_label_id()
     stop_label_id = processor.get_stop_label_id()
 
-    data_dir = r'sample_data'
-    train_examples = processor.get_train_examples(data_dir)
-    print(train_examples[0].img_id)
+    data_dir = r'/home/vms/bags/vlsp_all/origin+image/VLSP2018'
+    eval_examples = processor.get_test_examples(data_dir)
+    print(eval_examples[0].img_id)
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained("vinai/phobert-base")
+    eval_features = convert_mm_examples_to_features(
+            eval_examples, label_list, auxlabel_list, 256, tokenizer, 224, data_dir+'/ner_image')
+    
+    print(len(eval_features))
