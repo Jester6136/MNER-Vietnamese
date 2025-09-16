@@ -49,8 +49,6 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
         # Create the learnable parameter
         self.loss_weights = nn.Parameter(initial_logits)
 
-        self.init_weights()
-
     def text_toimage_loss(self,text_h1, image_h1, temp):
         batch_size = text_h1.shape[0]
         loss = 0

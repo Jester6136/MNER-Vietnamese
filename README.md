@@ -35,20 +35,20 @@ theta=0.05
 sigma=0.005
 lr_pixelcnn=0.001
 weight_decay_pixelcnn=0.00005
-learning_rate=3e-5
+learning_rate=2.2e-5
 num_train_epochs=10
-train_batch_size=128
-path_image="/home/admin/vlsp_all/origin+image/VLSP2016/ner_image"
+train_batch_size=32
+path_image="/home/vms/bags/vlsp_all/origin+image/VLSP2016/ner_image"
 bert_model="vinai/phobert-base-v2"
-data_dir="/home/admin/vlsp_all/origin+image/VLSP2016"
+data_dir="/home/vms/bags/vlsp_all/origin+image/VLSP2016"
 resnet_root="modules/resnet"
 cache_dir="cache"
 max_seq_length=256
 
-nohup python train_umt_pixelcnn_fixedlr.py \
+python train_umt_pixelcnn_fixedlr.py \
     --do_train \
     --do_eval \
-    --output_dir train_umt_pixelcnn_fixedlr_2016_beta${beta}_theta${theta}_sigma${sigma}_lr${learning_rate} \
+    --output_dir train_umt_pixelcnn_fixedlr_2016_beta${beta}_theta${theta}_sigma${sigma}_lr${learning_rate}_fixcrf \
     --bert_model "${bert_model}" \
     --alpha ${alpha} \
     --beta ${beta} \
@@ -66,8 +66,7 @@ nohup python train_umt_pixelcnn_fixedlr.py \
     --task_name "${task_name}" \
     --resnet_root "${resnet_root}" \
     --cache_dir "${cache_dir}" \
-    --max_seq_length ${max_seq_length} \
-    > train_2016.log 2>&1 &
+    --max_seq_length ${max_seq_length}
 
 
 

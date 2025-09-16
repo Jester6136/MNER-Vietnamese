@@ -1,5 +1,4 @@
-
-import math
+import torch.nn.functional as F
 import random
 import time
 from transformers import RobertaConfig
@@ -8,6 +7,7 @@ import numpy as np
 import torch
 from torch import nn
 from modules.model_architecture.torchcrf import CRF
+
 class UMT_PixelCNN(RobertaPreTrainedModel):
     """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
     """

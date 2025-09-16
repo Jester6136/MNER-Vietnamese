@@ -428,11 +428,40 @@ param_optimizer = list(model.named_parameters())
 no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
 
 weight_decay_pixelcnn = args.weight_decay_pixelcnn
+weight_decay_crf = 0.00005       # adjust as needed (could be same as pixelcnn or different)
+
 optimizer_grouped_parameters = [
-    {'params': [p for n, p in param_optimizer if not any(nd in n for nd in ['image_decoder']) and not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
-    {'params': [p for n, p in param_optimizer if not any(nd in n for nd in ['image_decoder']) and any(nd in n for nd in no_decay)], 'weight_decay': 0.0},
-    # {'lr' : 0.001, 'params': [p for n, p in param_optimizer if any(nd in n for nd in ['image_decoder'])], 'weight_decay': 0.00005}
-    {'lr' : 0.001, 'params': [p for n, p in param_optimizer if any(nd in n for nd in ['image_decoder'])], 'weight_decay': weight_decay_pixelcnn}
+    # Group 1: All parameters except image_decoder and CRF, without no_decay terms → weight_decay=0.01
+    {
+        'params': [p for n, p in param_optimizer 
+                   if not any(nd in n for nd in ['image_decoder', 'crf']) 
+                   and not any(nd in n for nd in no_decay)],
+        'weight_decay': 0.01
+    },
+    
+    # Group 2: All parameters except image_decoder and CRF, with no_decay terms → weight_decay=0.0
+    {
+        'params': [p for n, p in param_optimizer 
+                   if not any(nd in n for nd in ['image_decoder', 'crf']) 
+                   and any(nd in n for nd in no_decay)],
+        'weight_decay': 0.0
+    },
+    
+    # Group 3: image_decoder parameters (PixelCNN-like) with custom lr and weight_decay
+    {
+        'lr': 0.001,
+        'params': [p for n, p in param_optimizer 
+                   if any(nd in n for nd in ['image_decoder'])],
+        'weight_decay': weight_decay_pixelcnn
+    },
+    
+    # Group 4: CRF parameters (e.g., transition matrix, bias) with custom lr and weight_decay
+    {
+        'lr': 1.0e-2,                 # adjust if needed (often CRF uses smaller LR)
+        'params': [p for n, p in param_optimizer 
+                   if any(nd in n for nd in ['crf', 'crf_layer', 'transition'])],
+        'weight_decay': weight_decay_crf
+    }
 ]
 
 if args.fp16:
