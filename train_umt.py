@@ -379,17 +379,25 @@ negative_rate = args.negative_rate
 
 
 if args.do_train:
-    train_features = convert_mm_examples_to_features(
-        train_examples, label_list, auxlabel_list, args.max_seq_length, tokenizer, args.crop_size, args.path_image)
-    all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
-    all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
-    all_added_input_mask = torch.tensor([f.added_input_mask for f in train_features], dtype=torch.long)
-    all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
-    all_img_feats = torch.stack([f.img_feat for f in train_features])
-    all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
-    all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in train_features], dtype=torch.long)
-    train_data = TensorDataset(all_input_ids, all_input_mask, all_added_input_mask, \
-                                all_segment_ids, all_img_feats, all_label_ids,all_auxlabel_ids)
+    train_dataloader_save_path = args.data_dir+ "/train_dataloader_dataset.pth"
+    dev_dataloader_save_path = args.data_dir+ "/dev_dataloader_dataset.pth"
+    if not os.path.exists(train_dataloader_save_path):
+        train_features = convert_mm_examples_to_features(
+            train_examples, label_list, auxlabel_list, args.max_seq_length, tokenizer, args.crop_size, args.path_image)
+        all_input_ids = torch.tensor([f.input_ids for f in train_features], dtype=torch.long)
+        all_input_mask = torch.tensor([f.input_mask for f in train_features], dtype=torch.long)
+        all_added_input_mask = torch.tensor([f.added_input_mask for f in train_features], dtype=torch.long)
+        all_segment_ids = torch.tensor([f.segment_ids for f in train_features], dtype=torch.long)
+        all_img_feats = torch.stack([f.img_feat for f in train_features])
+        all_label_ids = torch.tensor([f.label_id for f in train_features], dtype=torch.long)
+        all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in train_features], dtype=torch.long)
+        train_data = TensorDataset(all_input_ids, all_input_mask, all_added_input_mask, \
+                                    all_segment_ids, all_img_feats, all_label_ids,all_auxlabel_ids)
+        
+        torch.save(train_data, train_dataloader_save_path)
+    else:
+        print("Loading the train_data (TensorDataset)")
+        train_data = torch.load(train_dataloader_save_path, weights_only=False)
     if args.local_rank == -1:
         train_sampler = RandomSampler(train_data)
     else:
@@ -397,18 +405,24 @@ if args.do_train:
     train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
 
     dev_eval_examples = processor.get_dev_examples(args.data_dir)
-    dev_eval_features = convert_mm_examples_to_features(
-        dev_eval_examples, label_list, auxlabel_list, args.max_seq_length, tokenizer, args.crop_size,
-        args.path_image)
-    all_input_ids = torch.tensor([f.input_ids for f in dev_eval_features], dtype=torch.long)
-    all_input_mask = torch.tensor([f.input_mask for f in dev_eval_features], dtype=torch.long)
-    all_added_input_mask = torch.tensor([f.added_input_mask for f in dev_eval_features], dtype=torch.long)
-    all_segment_ids = torch.tensor([f.segment_ids for f in dev_eval_features], dtype=torch.long)
-    all_img_feats = torch.stack([f.img_feat for f in dev_eval_features])
-    all_label_ids = torch.tensor([f.label_id for f in dev_eval_features], dtype=torch.long)
-    all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in dev_eval_features], dtype=torch.long)
-    dev_eval_data = TensorDataset(all_input_ids, all_input_mask, all_added_input_mask, all_segment_ids,
-                                    all_img_feats, all_label_ids, all_auxlabel_ids)
+    if not os.path.exists(dev_dataloader_save_path):
+        dev_eval_features = convert_mm_examples_to_features(
+            dev_eval_examples, label_list, auxlabel_list, args.max_seq_length, tokenizer, args.crop_size,
+            args.path_image)
+        all_input_ids = torch.tensor([f.input_ids for f in dev_eval_features], dtype=torch.long)
+        all_input_mask = torch.tensor([f.input_mask for f in dev_eval_features], dtype=torch.long)
+        all_added_input_mask = torch.tensor([f.added_input_mask for f in dev_eval_features], dtype=torch.long)
+        all_segment_ids = torch.tensor([f.segment_ids for f in dev_eval_features], dtype=torch.long)
+        all_img_feats = torch.stack([f.img_feat for f in dev_eval_features])
+        all_label_ids = torch.tensor([f.label_id for f in dev_eval_features], dtype=torch.long)
+        all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in dev_eval_features], dtype=torch.long)
+        dev_eval_data = TensorDataset(all_input_ids, all_input_mask, all_added_input_mask, all_segment_ids,
+                                        all_img_feats, all_label_ids, all_auxlabel_ids)
+    
+        torch.save(dev_eval_data, dev_dataloader_save_path)
+    else:
+        print("Loading the dev_dataloader_save_path (TensorDataset)")
+        dev_eval_data = torch.load(dev_dataloader_save_path, weights_only=False)
     # Run prediction for full data
     dev_eval_sampler = SequentialSampler(dev_eval_data)
     dev_eval_dataloader = DataLoader(dev_eval_data, sampler=dev_eval_sampler, batch_size=args.eval_batch_size)
@@ -555,8 +569,10 @@ if args.do_train:
 
 # loadmodel
 if args.mm_model == 'MTCCMBert':
-    model = UMT.from_pretrained(args.bert_model,
-                                cache_dir=args.cache_dir, layer_num1=args.layer_num1,
+    
+
+    config = RobertaConfig.from_pretrained(args.bert_model, cache_dir='cache')
+    model = UMT(config, layer_num1=args.layer_num1,
                                 layer_num2=args.layer_num2,
                                 layer_num3=args.layer_num3,
                                 num_labels_=num_labels, auxnum_labels = auxnum_labels)
@@ -564,27 +580,33 @@ if args.mm_model == 'MTCCMBert':
     model.to(device)
     encoder_state_dict = torch.load(output_encoder_file)
     encoder.load_state_dict(encoder_state_dict)
-    encoder.to(device)                                       
+    encoder.to(device)        
 else:
     print('please define your MNER Model')
 
 if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
     eval_examples = processor.get_test_examples(args.data_dir)
-    eval_features = convert_mm_examples_to_features(
-        eval_examples, label_list, auxlabel_list, args.max_seq_length, tokenizer, args.crop_size, args.path_image)
-    logger.info("***** Running Test Evaluation with the Best Model on the Dev Set*****")
-    logger.info("  Num examples = %d", len(eval_examples))
-    logger.info("  Batch size = %d", args.eval_batch_size)
-    all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
-    all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
-    all_added_input_mask = torch.tensor([f.added_input_mask for f in eval_features], dtype=torch.long)
-    all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
-    all_img_feats = torch.stack([f.img_feat for f in eval_features])
-    all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
-    all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in eval_features], dtype=torch.long)
-            
-    eval_data = TensorDataset(all_input_ids, all_input_mask, all_added_input_mask, all_segment_ids, all_img_feats,
-                                all_label_ids,all_auxlabel_ids)
+    test_dataloader_save_path = args.data_dir + "/test_dataloader_dataset.pth"
+    if not os.path.exists(test_dataloader_save_path):
+        eval_features = convert_mm_examples_to_features(
+            eval_examples, label_list, auxlabel_list, args.max_seq_length, tokenizer, args.crop_size, args.path_image)
+        logger.info("***** Running Test Evaluation with the Best Model on the Dev Set*****")
+        logger.info("  Num examples = %d", len(eval_examples))
+        logger.info("  Batch size = %d", args.eval_batch_size)
+        all_input_ids = torch.tensor([f.input_ids for f in eval_features], dtype=torch.long)
+        all_input_mask = torch.tensor([f.input_mask for f in eval_features], dtype=torch.long)
+        all_added_input_mask = torch.tensor([f.added_input_mask for f in eval_features], dtype=torch.long)
+        all_segment_ids = torch.tensor([f.segment_ids for f in eval_features], dtype=torch.long)
+        all_img_feats = torch.stack([f.img_feat for f in eval_features])
+        all_label_ids = torch.tensor([f.label_id for f in eval_features], dtype=torch.long)
+        all_auxlabel_ids = torch.tensor([f.auxlabel_id for f in eval_features], dtype=torch.long)
+                
+        eval_data = TensorDataset(all_input_ids, all_input_mask, all_added_input_mask, all_segment_ids, all_img_feats,
+                                    all_label_ids,all_auxlabel_ids)
+        torch.save(eval_data, test_dataloader_save_path)
+    else:
+        print("Loading the test_dataloader_save_path (TensorDataset)")
+        eval_data = torch.load(test_dataloader_save_path, weights_only=False)
     # Run prediction for full data
     eval_sampler = SequentialSampler(eval_data)
     eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
