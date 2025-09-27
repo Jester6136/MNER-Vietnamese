@@ -8,11 +8,12 @@ import random
 import numpy as np
 import torch
 import torch.nn.functional as F
-from transformers import AutoTokenizer,BertConfig
+from transformers import AutoTokenizer, RobertaConfig
 from modules.model_architecture.UMT import UMT
 from modules.resnet import resnet as resnet
 from modules.resnet.resnet_utils import myResnet
 from modules.datasets.dataset_roberta import convert_mm_examples_to_features,MNERProcessor
+from modules.model_architecture.common import RobertaModel
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
                               TensorDataset)                        
 from pytorch_pretrained_bert.optimization import BertAdam,warmup_linear
@@ -274,17 +275,21 @@ if args.do_train:
         num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
 if args.mm_model == 'MTCCMBert':
-    model = UMT.from_pretrained(args.bert_model,
-                                cache_dir=args.cache_dir, layer_num1=args.layer_num1,
+
+    config = RobertaConfig.from_pretrained(args.bert_model, cache_dir='cache')
+    roberta_pretrained = RobertaModel.from_pretrained(args.bert_model, cache_dir='cache')
+    model = UMT(config, layer_num1=args.layer_num1,
                                 layer_num2=args.layer_num2,
                                 layer_num3=args.layer_num3,
                                 num_labels_=num_labels, auxnum_labels = auxnum_labels)
+    model.roberta.load_state_dict(roberta_pretrained.state_dict())
 else:
     print('please define your MNER Model')
-
+    
 net = getattr(resnet, 'resnet152')()
-net.load_state_dict(torch.load(os.path.join(args.resnet_root, 'resnet152.pth')))
+net.load_state_dict(torch.load(os.path.join(args.resnet_root, 'resnet152.pth'), weights_only=False))
 encoder = myResnet(net, args.fine_tune_cnn, device)
+
 
 if args.fp16:
     model.half()
