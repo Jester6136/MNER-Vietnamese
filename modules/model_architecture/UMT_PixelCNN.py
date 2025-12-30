@@ -182,20 +182,17 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
 
 
 if __name__ == "__main__":
-    random.seed(37)
-    np.random.seed(37)
-    torch.manual_seed(37)
-    config = RobertaConfig.from_pretrained(args.bert_model, cache_dir='cache')
-    roberta_pretrained = RobertaModel.from_pretrained(args.bert_model, cache_dir='cache')
-    model = UMT_PixelCNN(config, layer_num1=1, layer_num2=1, layer_num3=1, num_labels_=13, auxnum_labels=7)
-    model.roberta.load_state_dict(roberta_pretrained.state_dict())
-    # Check for NaN values
-    aaa =[]
-    for name, param in model.named_parameters():
-        if torch.isnan(param).any():
-            aaa.append(f"NaN found in {name}")
-        if torch.isinf(param).any():
-            aaa.append(f"Inf found in {name}")
-
-    if aaa:
-        print(aaa)
+    output_model_file = "/home/vms/bags/MNER-Vietnamese/tmp/train_umt_pixelcnn_fixedlr_2016_beta0.5_theta0.05_sigma0.005_lr3e-5_fixcrf/pytorch_model.bin"
+    output_encoder_file = "/home/vms/bags/MNER-Vietnamese/tmp/train_umt_pixelcnn_fixedlr_2016_beta0.5_theta0.05_sigma0.005_lr3e-5_fixcrf/pytorch_encoder.bin"
+    config = RobertaConfig.from_pretrained("vinai/phobert-base-v2", cache_dir='cache')
+    model = UMT_PixelCNN(config, num_labels_=13, auxnum_labels = 7)
+    model.load_state_dict(torch.load(output_model_file))
+    model.to("cuda")
+    from modules.resnet import resnet as resnet
+    from modules.resnet.resnet_utils import myResnet
+    net = getattr(resnet, 'resnet152')()
+    encoder = myResnet(net, False, "cuda")
+    encoder.load_state_dict(torch.load(output_encoder_file))
+    encoder.to("cuda")
+    
+    print(model)

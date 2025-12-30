@@ -45,21 +45,6 @@ class RobertaSelfEncoder(nn.Module):
             all_encoder_layers.append(hidden_states)
         return all_encoder_layers
 
-class RobertaCrossEncoder(nn.Module):
-    def __init__(self, config, layer_num):
-        super(RobertaCrossEncoder, self).__init__()
-        layer = RobertaCrossAttentionLayer(config)
-        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(layer_num)])
-
-    def forward(self, s1_hidden_states, s2_hidden_states, s2_attention_mask, output_all_encoded_layers=True):
-        all_encoder_layers = []
-        for layer_module in self.layer:
-            s1_hidden_states = layer_module(s1_hidden_states, s2_hidden_states, s2_attention_mask)
-            if output_all_encoded_layers:
-                all_encoder_layers.append(s1_hidden_states)
-        if not output_all_encoded_layers:
-            all_encoder_layers.append(s1_hidden_states)
-        return all_encoder_layers
 
 class RobertaCoAttention(nn.Module):
     def __init__(self, config):
@@ -83,25 +68,21 @@ class RobertaCoAttention(nn.Module):
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
 
-    def forward(self, s1_hidden_states, s2_hidden_states, s2_attention_mask):
-
+    
+    def forward(self, s1_hidden_states, s2_hidden_states, s2_attention_mask, output_attentions=False):
         mixed_query_layer = self.query(s1_hidden_states)
         mixed_key_layer = self.key(s2_hidden_states)
         mixed_value_layer = self.value(s2_hidden_states)
-
-
 
         query_layer = self.transpose_for_scores(mixed_query_layer)
         key_layer = self.transpose_for_scores(mixed_key_layer)
         value_layer = self.transpose_for_scores(mixed_value_layer)
 
-
-
         # Take the dot product between "query" and "key" to get the raw attention scores.
         attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-
         attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-        # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
+        
+        # Apply the attention mask
         attention_scores = attention_scores + s2_attention_mask
 
         # Normalize the attention scores to probabilities.
@@ -112,36 +93,80 @@ class RobertaCoAttention(nn.Module):
         attention_probs = self.dropout(attention_probs)
 
         context_layer = torch.matmul(attention_probs, value_layer)
-
         context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
 
         new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
         context_layer = context_layer.view(*new_context_layer_shape)
+        
+        if output_attentions:
+            return context_layer, attention_probs
         return context_layer
+
 
 class RobertaCrossAttention(nn.Module):
     def __init__(self, config):
         super(RobertaCrossAttention, self).__init__()
         self.self = RobertaCoAttention(config)
-        self.output = RobertaSelfOutput(config)
+        self.output = RobertaSelfOutput(config)  # You'll need to define this or import it
 
-    def forward(self, s1_input_tensor, s2_input_tensor, s2_attention_mask):
-        s1_cross_output = self.self(s1_input_tensor, s2_input_tensor, s2_attention_mask)
+    def forward(self, s1_input_tensor, s2_input_tensor, s2_attention_mask, output_attentions=False):
+        if output_attentions:
+            s1_cross_output, attention_probs = self.self(s1_input_tensor, s2_input_tensor, s2_attention_mask, output_attentions=True)
+        else:
+            s1_cross_output = self.self(s1_input_tensor, s2_input_tensor, s2_attention_mask, output_attentions=False)
+            attention_probs = None
         attention_output = self.output(s1_cross_output, s1_input_tensor)
+        if output_attentions:
+            return attention_output, attention_probs
         return attention_output
+
 
 class RobertaCrossAttentionLayer(nn.Module):
     def __init__(self, config):
         super(RobertaCrossAttentionLayer, self).__init__()
         self.attention = RobertaCrossAttention(config)
-        self.intermediate = RobertaIntermediate(config)
-        self.output = RobertaOutput(config)
+        self.intermediate = RobertaIntermediate(config)  # You'll need to define this or import it
+        self.output = RobertaOutput(config)  # You'll need to define this or import it
 
-    def forward(self, s1_hidden_states, s2_hidden_states, s2_attention_mask):
-        attention_output = self.attention(s1_hidden_states, s2_hidden_states, s2_attention_mask)
+    def forward(self, s1_hidden_states, s2_hidden_states, s2_attention_mask, output_attentions=False):
+        if output_attentions:
+            attention_output, attention_probs = self.attention(s1_hidden_states, s2_hidden_states, s2_attention_mask, output_attentions=True)
+        else:
+            attention_output = self.attention(s1_hidden_states, s2_hidden_states, s2_attention_mask, output_attentions=False)
+            attention_probs = None
         intermediate_output = self.intermediate(attention_output)
         layer_output = self.output(intermediate_output, attention_output)
+        if output_attentions:
+            return layer_output, attention_probs
         return layer_output
+
+class RobertaCrossEncoder(nn.Module):
+    def __init__(self, config, layer_num):
+        super(RobertaCrossEncoder, self).__init__()
+        layer = RobertaCrossAttentionLayer(config)
+        self.layer = nn.ModuleList([copy.deepcopy(layer) for _ in range(layer_num)])
+
+    def forward(self, s1_hidden_states, s2_hidden_states, s2_attention_mask, output_all_encoded_layers=True, output_attentions=False):
+        all_encoder_layers = []
+        all_attentions = []
+        hidden_states = s1_hidden_states
+        
+        for layer_module in self.layer:
+            if output_attentions:
+                layer_output, layer_attentions = layer_module(hidden_states, s2_hidden_states, s2_attention_mask, output_attentions=True)
+                all_attentions.append(layer_attentions)
+            else:
+                layer_output = layer_module(hidden_states, s2_hidden_states, s2_attention_mask, output_attentions=False)
+            hidden_states = layer_output
+            if output_all_encoded_layers:
+                all_encoder_layers.append(layer_output)
+        
+        if not output_all_encoded_layers:
+            all_encoder_layers.append(layer_output)
+        
+        if output_attentions:
+            return all_encoder_layers, all_attentions
+        return all_encoder_layers
 
 class down_right_shifted_deconv2d(nn.Module):
     def __init__(self, num_filters_in, num_filters_out, filter_size=(2, 2), stride=(1, 1),

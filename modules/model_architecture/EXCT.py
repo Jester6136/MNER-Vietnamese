@@ -5,18 +5,16 @@ from torch import nn
 from modules.model_architecture.torchcrf import CRF
 import torch.nn.functional as F
 
-class UMT_PixelCNN(RobertaPreTrainedModel):
+class EXTCModel(RobertaPreTrainedModel):
     """Coupled Cross-Modal Attention BERT model for token-level classification with CRF on top.
     """
     def __init__(self, config, layer_num1=1, layer_num2=1, layer_num3=1,  num_labels_=2, auxnum_labels=2):
-        super(UMT_PixelCNN, self).__init__(config)
+        super(EXTCModel, self).__init__(config)
         self.num_labels = num_labels_
         self.roberta = RobertaModel(config)
         #self.trans_matrix = torch.zeros(num_labels, auxnum_labels)
         self.image_decoder = ImageDecoder(nr_resnet=5, nr_filters=80, nr_logistic_mix=10,
                                  resnet_nonlinearity='concat_elu', input_channels=3)
-        self.self_attention = RobertaSelfEncoder(config)
-        self.self_attention_v2 = RobertaSelfEncoder(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.linear = nn.Linear(config.hidden_size, config.hidden_size)
         self.vismap2text = nn.Linear(2048, config.hidden_size)
@@ -96,142 +94,95 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
 
     # this forward is just for predict, not for train
     # dont confuse this with _forward_alg above.
-    def forward(self, input_ids_external, segment_ids_external, input_mask_external, added_attention_mask_external, visual_embeds_mean, visual_embeds_att, trans_matrix, added_attention_mask_origin ,input_ids_origin = None, segment_ids_origin = None, input_mask_origin = None, 
+    def forward(self, input_ids_external, segment_ids_external, input_mask_external, added_attention_mask_external, visual_embeds_mean, visual_embeds_att, added_attention_mask_origin ,input_ids_origin = None, segment_ids_origin = None, input_mask_origin = None, 
                 image_decode=None, alpha=None, temp=None, temp_lamb=None, labels_external=None, auxlabels_external=None, labels_origin=None, auxlabels_origin=None):
 
-        # Get the emission scores from the BiLSTM
-        features_external = self.roberta(input_ids_external, token_type_ids=segment_ids_external, attention_mask=input_mask_external)  # batch_size * seq_len * hidden_size
+        features_external = self.roberta(input_ids_external, token_type_ids=segment_ids_external, attention_mask=input_mask_external)
         sequence_output_external = features_external["last_hidden_state"]
         pooler_output_external = features_external["pooler_output"]
         sequence_output_external = self.dropout(sequence_output_external)
         pooler_output_external = self.linear(pooler_output_external)
 
-        extended_txt_mask_external = input_mask_external.unsqueeze(1).unsqueeze(2)
-        extended_txt_mask_external = extended_txt_mask_external.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
-        extended_txt_mask_external = (1.0 - extended_txt_mask_external) * -10000.0
-        aux_addon_sequence_encoder_external = self.self_attention(sequence_output_external, extended_txt_mask_external)
+        aux_bert_feats_external = self.aux_classifier(sequence_output_external)
 
-        aux_addon_sequence_output_external = aux_addon_sequence_encoder_external[-1]
-        aux_addon_sequence_output_external = aux_addon_sequence_output_external[0]
-        aux_bert_feats_external = self.aux_classifier(aux_addon_sequence_output_external)
-        #######aux_bert_feats = self.aux_classifier(sequence_output)
-        trans_bert_feats_external = torch.matmul(aux_bert_feats_external, trans_matrix.float())
+        vis_embed_map_external = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)
+        converted_vis_embed_map_external = self.vismap2text(vis_embed_map_external)
 
-        main_addon_sequence_encoder_external = self.self_attention_v2(sequence_output_external, extended_txt_mask_external)
-        main_addon_sequence_output_external = main_addon_sequence_encoder_external[-1]
-        main_addon_sequence_output_external = main_addon_sequence_output_external[0]
-        vis_embed_map_external = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048
-        converted_vis_embed_map_external = self.vismap2text(vis_embed_map_external)  # self.batch_size, 49, hidden_dim
-
-        # '''
-        # apply txt2img attention mechanism to obtain image-based text representations
         img_mask_external = added_attention_mask_external[:,:49]
         extended_img_mask_external = img_mask_external.unsqueeze(1).unsqueeze(2)
-        extended_img_mask_external = extended_img_mask_external.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
+        extended_img_mask_external = extended_img_mask_external.to(dtype=next(self.parameters()).dtype)
         extended_img_mask_external = (1.0 - extended_img_mask_external) * -10000.0
 
-        cross_encoder_external = self.txt2img_attention(main_addon_sequence_output_external, converted_vis_embed_map_external, extended_img_mask_external)
-        cross_output_layer_external = cross_encoder_external[-1]  # self.batch_size * text_len * hidden_dim
+        cross_encoder_external = self.txt2img_attention(sequence_output_external, converted_vis_embed_map_external, extended_img_mask_external)
+        cross_output_layer_external = cross_encoder_external[-1]
 
-        # apply img2txt attention mechanism to obtain multimodal-based text representations
-        converted_vis_embed_map_v2_external = self.vismap2text_v2(vis_embed_map_external)  # self.batch_size, 49, hidden_dim
+        converted_vis_embed_map_v2_external = self.vismap2text_v2(vis_embed_map_external)
 
-        cross_txt_encoder_external = self.img2txt_attention(converted_vis_embed_map_v2_external, main_addon_sequence_output_external, extended_txt_mask_external)
-        cross_txt_output_layer_external = cross_txt_encoder_external[-1]  # self.batch_size * 49 * hidden_dim
-        cross_final_txt_encoder_external = self.txt2txt_attention(main_addon_sequence_output_external, cross_txt_output_layer_external, extended_img_mask_external)
-        ##cross_final_txt_encoder = self.txt2txt_attention(aux_addon_sequence_output, cross_txt_output_layer, extended_img_mask)
-        cross_final_txt_layer_external = cross_final_txt_encoder_external[-1]  # self.batch_size * text_len * hidden_dim
-        #cross_final_txt_layer = torch.add(cross_final_txt_layer, sequence_output)
+        extended_txt_mask_external = input_mask_external.unsqueeze(1).unsqueeze(2)
+        extended_txt_mask_external = extended_txt_mask_external.to(dtype=next(self.parameters()).dtype)
+        extended_txt_mask_external = (1.0 - extended_txt_mask_external) * -10000.0
 
-        # visual gate
+        cross_txt_encoder_external = self.img2txt_attention(converted_vis_embed_map_v2_external, sequence_output_external, extended_txt_mask_external)
+        cross_txt_output_layer_external = cross_txt_encoder_external[-1]
+        cross_final_txt_encoder_external = self.txt2txt_attention(sequence_output_external, cross_txt_output_layer_external, extended_img_mask_external)
+        cross_final_txt_layer_external = cross_final_txt_encoder_external[-1]
+
         merge_representation_external = torch.cat((cross_final_txt_layer_external, cross_output_layer_external), dim=-1)
-        gate_value_external = torch.sigmoid(self.gate(merge_representation_external))  # batch_size, text_len, hidden_dim
+        gate_value_external = torch.sigmoid(self.gate(merge_representation_external))
         gated_converted_att_vis_embed_external = torch.mul(gate_value_external, cross_output_layer_external)
-        # reverse_gate_value = torch.neg(gate_value).add(1)
-        # gated_converted_att_vis_embed = torch.add(torch.mul(reverse_gate_value, cross_final_txt_layer),
-                                        # torch.mul(gate_value, cross_output_layer))
 
-        # direct concatenation
-        # gated_converted_att_vis_embed = self.dropout(gated_converted_att_vis_embed)
+
         final_output_external = torch.cat((cross_final_txt_layer_external, gated_converted_att_vis_embed_external), dim=-1)
-        ###### final_output = self.dropout(final_output)
-        #middle_output = torch.cat((cross_final_txt_layer, gated_converted_att_vis_embed), dim=-1)
-        #final_output = torch.cat((sequence_output, middle_output), dim=-1)
 
-        ###### addon_sequence_output = self.self_attention(final_output, extended_txt_mask)
         bert_feats_external = self.classifier(final_output_external)
-        final_bert_feats_external = torch.add(torch.mul(bert_feats_external, alpha),torch.mul(trans_bert_feats_external, 1-alpha))
 
-        # suggested by Hongjie
-        #bert_feats = F.log_softmax(bert_feats, dim=-1)
 
         if labels_external is not None:
-            # orgin context
             features_origin = self.roberta(input_ids_origin, token_type_ids=segment_ids_origin, attention_mask=input_mask_origin)  # batch_size * seq_len * hidden_size
             sequence_output_origin = features_origin["last_hidden_state"]
             pooler_output_origin = features_origin["pooler_output"]
             sequence_output_origin = self.dropout(sequence_output_origin)
             pooler_output_origin = self.linear(pooler_output_origin)
             extended_txt_mask_origin = input_mask_origin.unsqueeze(1).unsqueeze(2)
-            extended_txt_mask_origin = extended_txt_mask_origin.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
+            extended_txt_mask_origin = extended_txt_mask_origin.to(dtype=next(self.parameters()).dtype)
             extended_txt_mask_origin = (1.0 - extended_txt_mask_origin) * -10000.0
-            aux_addon_sequence_encoder_origin = self.self_attention(sequence_output_origin, extended_txt_mask_origin)
-            aux_addon_sequence_output_origin = aux_addon_sequence_encoder_origin[-1]
-            aux_addon_sequence_output_origin = aux_addon_sequence_output_origin[0]
-            aux_bert_feats_origin = self.aux_classifier(aux_addon_sequence_output_origin)
-            #######aux_bert_feats = self.aux_classifier(sequence_output)
-            trans_bert_feats_origin = torch.matmul(aux_bert_feats_origin, trans_matrix.float())
-            main_addon_sequence_encoder_origin = self.self_attention_v2(sequence_output_origin, extended_txt_mask_origin)
-            main_addon_sequence_output_origin = main_addon_sequence_encoder_origin[-1]
-            main_addon_sequence_output_origin = main_addon_sequence_output_origin[0]
-            vis_embed_map_origin = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)  # self.batch_size, 49, 2048
-            converted_vis_embed_map_origin = self.vismap2text(vis_embed_map_origin)  # self.batch_size, 49, hidden_dim
-            # apply txt2img attention mechanism to obtain image-based text representations
+            aux_bert_feats_origin = self.aux_classifier(sequence_output_origin)
+            vis_embed_map_origin = visual_embeds_att.view(-1, 2048, 49).permute(0, 2, 1)
+            converted_vis_embed_map_origin = self.vismap2text(vis_embed_map_origin)
             img_mask_origin = added_attention_mask_origin[:,:49]
             extended_img_mask_origin = img_mask_origin.unsqueeze(1).unsqueeze(2)
-            extended_img_mask_origin = extended_img_mask_origin.to(dtype=next(self.parameters()).dtype) # fp16 compatibility
+            extended_img_mask_origin = extended_img_mask_origin.to(dtype=next(self.parameters()).dtype)
             extended_img_mask_origin = (1.0 - extended_img_mask_origin) * -10000.0
-            cross_encoder_origin = self.txt2img_attention(main_addon_sequence_output_origin, converted_vis_embed_map_origin, extended_img_mask_origin)
-            cross_output_layer_origin = cross_encoder_origin[-1]  # self.batch_size * text_len * hidden_dim
-            # apply img2txt attention mechanism to obtain multimodal-based text representations
-            converted_vis_embed_map_v2_origin = self.vismap2text_v2(vis_embed_map_origin)  # self.batch_size, 49, hidden_dim
-            cross_txt_encoder_origin = self.img2txt_attention(converted_vis_embed_map_v2_origin, main_addon_sequence_output_origin, extended_txt_mask_origin)
-            cross_txt_output_layer_origin = cross_txt_encoder_origin[-1]  # self.batch_size * 49 * hidden_dim
-            cross_final_txt_encoder_origin = self.txt2txt_attention(main_addon_sequence_output_origin, cross_txt_output_layer_origin, extended_img_mask_origin)
-            cross_final_txt_layer_origin = cross_final_txt_encoder_origin[-1]  # self.batch_size * text_len * hidden_dim
-            # visual gate
+            cross_encoder_origin = self.txt2img_attention(sequence_output_origin, converted_vis_embed_map_origin, extended_img_mask_origin)
+            cross_output_layer_origin = cross_encoder_origin[-1]
+ 
+            converted_vis_embed_map_v2_origin = self.vismap2text_v2(vis_embed_map_origin)
+            cross_txt_encoder_origin = self.img2txt_attention(converted_vis_embed_map_v2_origin, sequence_output_origin, extended_txt_mask_origin)
+            cross_txt_output_layer_origin = cross_txt_encoder_origin[-1]
+            cross_final_txt_encoder_origin = self.txt2txt_attention(sequence_output_origin, cross_txt_output_layer_origin, extended_img_mask_origin)
+            cross_final_txt_layer_origin = cross_final_txt_encoder_origin[-1]
             merge_representation_origin = torch.cat((cross_final_txt_layer_origin, cross_output_layer_origin), dim=-1)
-            gate_value_origin = torch.sigmoid(self.gate(merge_representation_origin))  # batch_size, text_len, hidden_dim
+            gate_value_origin = torch.sigmoid(self.gate(merge_representation_origin))
             gated_converted_att_vis_embed_origin = torch.mul(gate_value_origin, cross_output_layer_origin)
-            # direct concatenation
-            # gated_converted_att_vis_embed = self.dropout(gated_converted_att_vis_embed)
             final_output_origin = torch.cat((cross_final_txt_layer_origin, gated_converted_att_vis_embed_origin), dim=-1)
-            ###### final_output = self.dropout(final_output)
-            #middle_output = torch.cat((cross_final_txt_layer, gated_converted_att_vis_embed), dim=-1)
-            #final_output = torch.cat((sequence_output, middle_output), dim=-1)
-            ###### addon_sequence_output = self.self_attention(final_output, extended_txt_mask)
             bert_feats_origin = self.classifier(final_output_origin)
-            final_bert_feats_origin = torch.add(torch.mul(bert_feats_origin, alpha),torch.mul(trans_bert_feats_origin, 1-alpha))
             
-            
-            # --- Tính toán các thành phần Loss (giữ nguyên) ---
-            # Loss origin 1
             aux_loss_origin = - self.aux_crf(aux_bert_feats_origin, auxlabels_origin, mask=input_mask_origin.byte(), reduction='mean')
-            # Loss origin 2
-            main_loss_origin = - self.crf(final_bert_feats_origin, labels_origin, mask=input_mask_origin.byte(), reduction='mean')
-            # Loss origin 3
+
+            main_loss_origin = - self.crf(bert_feats_origin, labels_origin, mask=input_mask_origin.byte(), reduction='mean')
+
             text_output_cl_origin = self.text_ouput_cl(self.relu(self.text_dense_cl(pooler_output_origin)))
             image_ouput_cl_origin = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
             cl_loss_origin = self.total_loss(text_output_cl_origin, image_ouput_cl_origin, temp, temp_lamb)
             
-            # Loss external 1
+
             aux_loss_external = - self.aux_crf(aux_bert_feats_external, auxlabels_external, mask=input_mask_external.byte(), reduction='mean')
-            # Loss external 2
-            main_loss_external = - self.crf(final_bert_feats_external, labels_external, mask=input_mask_external.byte(), reduction='mean')
-            # Loss external 3
+
+            main_loss_external = - self.crf(bert_feats_external, labels_external, mask=input_mask_external.byte(), reduction='mean')
+
             image_generate = self.image_decoder(x=image_decode, h=pooler_output_external)
             loss_ti = LOSS_TI(image_decode, image_generate)
-            # Loss external 4
+
             text_output_cl_external = self.text_ouput_cl(self.relu(self.text_dense_cl(pooler_output_external)))
             image_ouput_cl_external = self.image_output_cl(self.relu(self.image_dense_cl(visual_embeds_mean)))
             cl_loss_external = self.total_loss(text_output_cl_external, image_ouput_cl_external, temp, temp_lamb)
@@ -256,13 +207,13 @@ class UMT_PixelCNN(RobertaPreTrainedModel):
 
             return loss
         else:
-            pred_tags = self.crf.decode(final_bert_feats_external, mask=input_mask_external.byte())
+            pred_tags = self.crf.decode(bert_feats_external, mask=input_mask_external.byte())
             return pred_tags
 
 
 
 def main():
-    print("Testing UMT_PixelCNN model...")
+    print("Testing EXTCModel model...")
     
     # Check if CUDA is available and set device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -282,7 +233,7 @@ def main():
     )
     
     # Initialize the model
-    model = UMT_PixelCNN(
+    model = EXTCModel(
         config=config,
         layer_num1=1,
         layer_num2=1,
@@ -318,9 +269,6 @@ def main():
     visual_embeds_mean = torch.randn((batch_size, 2048)).to(device)
     visual_embeds_att = torch.randn((batch_size, 49, 2048)).to(device)
     
-    # Transformation matrix for auxiliary classifier
-    trans_matrix = torch.eye(2, 2).to(device)  # 2x2 identity matrix
-    
     # Image decode input (for image generation loss)
     image_decode = torch.randn((batch_size, 3, 32, 32)).to(device)  # Example: 3-channel image of 32x32
     
@@ -353,7 +301,6 @@ def main():
             added_attention_mask_external=added_attention_mask_external,
             visual_embeds_mean=visual_embeds_mean,
             visual_embeds_att=visual_embeds_att,
-            trans_matrix=trans_matrix,
             added_attention_mask_origin=added_attention_mask_origin,
             input_ids_origin=input_ids_origin,
             segment_ids_origin=segment_ids_origin,
@@ -379,7 +326,6 @@ def main():
         added_attention_mask_external=added_attention_mask_external,
         visual_embeds_mean=visual_embeds_mean,
         visual_embeds_att=visual_embeds_att,
-        trans_matrix=trans_matrix,
         added_attention_mask_origin=added_attention_mask_origin,
         input_ids_origin=input_ids_origin,
         segment_ids_origin=segment_ids_origin,
